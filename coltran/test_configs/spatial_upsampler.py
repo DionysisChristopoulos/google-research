@@ -30,7 +30,7 @@ def get_config():
 
   # Training.
   config.batch_size = 1
-  config.max_train_steps = 15000
+  config.max_train_steps = 50000
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
@@ -46,19 +46,19 @@ def get_config():
   config.model = ConfigDict()
   config.model.hidden_size = 32
   config.model.ff_size = 32
-  config.model.num_heads = 1
-  config.model.num_encoder_layers = 1
+  config.model.num_heads = 4
+  config.model.num_encoder_layers = 3
   config.model.resolution = [64, 64]
   config.model.name = 'spatial_upsampler'
 
   config.sample = ConfigDict()
-  config.sample.gen_data_dir = '/tmp/color_upsampler_test/samples'
+  config.sample.gen_data_dir = 'D:\color_upsampler_128_12bs_100k\samples'
   config.sample.log_dir = 'samples'
   config.sample.batch_size = 1
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 1
+  config.sample.num_outputs = 100
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'gen0'
+  config.sample.gen_file = 'gen0_100_32_100k'
 
   return config

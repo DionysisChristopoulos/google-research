@@ -28,8 +28,8 @@ def get_config():
   config.resolution = [256, 256]
 
   # Training.
-  config.batch_size = 1
-  config.max_train_steps = 20000
+  config.batch_size = 4
+  config.max_train_steps = 100000
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
@@ -47,27 +47,27 @@ def get_config():
 
   # Model.
   config.model = ConfigDict()
-  config.model.hidden_size = 32
+  config.model.hidden_size = 128
   config.model.stage = 'encoder_decoder'
   config.model.resolution = [64, 64]
   config.model.name = 'coltran_core'
 
   # encoder
   config.model.encoder = ConfigDict()
-  config.model.encoder.ff_size = 32
-  config.model.encoder.hidden_size = 32
-  config.model.encoder.num_heads = 1
-  config.model.encoder.num_encoder_layers = 1
+  config.model.encoder.ff_size = 128
+  config.model.encoder.hidden_size = 128
+  config.model.encoder.num_heads = 4
+  config.model.encoder.num_encoder_layers = 4
   config.model.encoder.dropout = 0.0
 
   # decoder
   config.model.decoder = ConfigDict()
-  config.model.decoder.ff_size = 32
-  config.model.decoder.hidden_size = 32
+  config.model.decoder.ff_size = 128
+  config.model.decoder.hidden_size = 128
   config.model.decoder.resolution = [64, 64]
-  config.model.decoder.num_heads = 1
-  config.model.decoder.num_inner_layers = 1
-  config.model.decoder.num_outer_layers = 1
+  config.model.decoder.num_heads = 4
+  config.model.decoder.num_inner_layers = 2
+  config.model.decoder.num_outer_layers = 2
   config.model.decoder.dropout = 0.0
   config.model.decoder.skip = True
 
@@ -92,8 +92,8 @@ def get_config():
   config.sample.batch_size = 1
   config.sample.mode = 'sample'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 1
+  config.sample.num_outputs = 100
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'gen0'
+  config.sample.gen_file = 'gen0_100_128_4bs_100k'
   return config
 

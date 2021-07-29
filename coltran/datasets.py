@@ -109,18 +109,18 @@ def create_gen_dataset_from_images(image_dir):
 def get_imagenet(subset, read_config):
   """Gets imagenet dataset."""
   train = subset == 'train'
-  num_val_examples = 0 if subset == 'eval_train' else 10000
+  num_val_examples = 0 if subset == 'eval_train' else 20000
   if subset == 'test':
-    ds = tfds.load('imagenet2012', split='validation', shuffle_files=False)
+    ds = tfds.load('imagenet2012', split='validation', shuffle_files=False, data_dir='D:\\tensorflow_datasets')
   else:
     # split 10000 samples from the imagenet dataset for validation.
     ds, info = tfds.load('imagenet2012', split='train', with_info=True,
-                         shuffle_files=train, read_config=read_config)
+                         shuffle_files=train, read_config=read_config, data_dir='D:\\tensorflow_datasets')
     num_train = info.splits['train'].num_examples - num_val_examples
     if train:
       ds = ds.take(num_train)
     elif subset == 'valid':
-      ds = ds.skip(num_train)
+      ds = ds.take(num_val_examples)
   return ds
 
 
