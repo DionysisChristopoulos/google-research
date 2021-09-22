@@ -21,6 +21,7 @@ import re
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from coltran.utils import datasets_utils
+import glob
 
 
 def resize_to_square(image, resolution=32, train=True):
@@ -99,11 +100,25 @@ def create_gen_dataset_from_images(image_dir):
     image_str = tf.io.read_file(path)
     return tf.image.decode_image(image_str, channels=3)
 
-  child_files = tf.io.gfile.listdir(image_dir)
-  files = [os.path.join(image_dir, file) for file in child_files]
-  files = tf.convert_to_tensor(files, dtype=tf.string)
-  dataset = tf.data.Dataset.from_tensor_slices((files))
-  return dataset.map(load_image, num_parallel_calls=100)
+  files = []
+  cube = []
+  hypercube = []
+
+  for r in sorted(glob.glob(image_dir + "/**")):
+    for im in sorted(glob.glob(r + "/**")):
+      im = load_image(im)
+      cube.append(im)  # returns a list of 10 tensors at a time with size (256,256,3)
+      # print(cube)
+
+    files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,30)
+    # print(files)
+    hypercube.append(files)  # list of 55 tensors with size (256,256,30)
+    # print(hypercube)
+    cube.clear()
+
+  #print(len(hypercube))
+  dataset = tf.data.Dataset.from_tensor_slices((hypercube))
+  return dataset
 
 
 def get_imagenet(subset, read_config):
@@ -185,4 +200,5 @@ def get_dataset(name,
     ds = ds.shuffle(buffer_size=128)
   ds = ds.batch(batch_size, drop_remainder=True)
   ds = ds.prefetch(auto)
+  print(ds) #compare with imagenet
   return ds
