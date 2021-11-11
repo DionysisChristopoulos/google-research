@@ -66,14 +66,37 @@ class GrayScaleEncoder(layers.Layer):
     self.embedding = layers.Dense(units=self.config.hidden_size)
     self.encoder = coltran_layers.FactorizedAttention(self.config)
 
-  def call(self, inputs):
-    if len(inputs.shape) == 4:
-      if inputs.shape[-1] != 1:
-        raise ValueError('Expected inputs is a grayscale image')
-      grayscale = tf.squeeze(inputs, axis=-1)
-    grayscale = tf.one_hot(grayscale, depth=256)
-    h_gray = self.embedding(grayscale)
-    return self.encoder(h_gray)
+  def call(self, inputs, channel_index=None, training=True):
+    if len(inputs.shape) == 4: #(B,64,64,30)
+      num_channels = inputs.shape[-1]
+      logits=[]
+
+      if channel_index is not None:
+          channel_index = tf.reshape(channel_index, (-1, 1, 1))
+
+      for channel_ind in range(num_channels):
+          channel = inputs[Ellipsis, channel_ind]
+
+          if channel_index is not None:
+              # single random channel slice during training.
+              # channel_index is the index of the random channel.
+              # each channel has 8 possible symbols.
+              channel += 8 * channel_index
+          else:
+              channel += 8 * channel_ind
+
+          channel = tf.expand_dims(channel, axis=-1)
+          channel = tf.one_hot(channel, depth=256)
+
+          channel = self.embedding(channel)
+          channel = tf.squeeze(channel, axis=-2)
+
+          context = self.encoder(channel, training=training)
+          logits.append(context)
+
+    logits = tf.stack(logits, axis=-2)  # (B,64,64,30,128)
+    logits = tf.reduce_sum(logits, axis=3)  # (B,64,64,128) # TODO: Check other aggregation strategies
+    return logits
 
 
 class OuterDecoder(layers.Layer):

@@ -18,10 +18,13 @@
 import functools
 import os
 import re
+import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from coltran.utils import datasets_utils
 import glob
+import cv2
+import random
 
 
 def resize_to_square(image, resolution=32, train=True):
@@ -30,7 +33,10 @@ def resize_to_square(image, resolution=32, train=True):
   # Crop a square-shaped image by shortening the longer side.
   image_shape = tf.shape(image)
   height, width, channels = image_shape[0], image_shape[1], image_shape[2]
-  side_size = tf.minimum(height, width)
+  if height == width:
+    side_size = resolution
+  else:
+    side_size = tf.minimum(height, width) 
   cropped_shape = tf.stack([side_size, side_size, channels])
   if train:
     image = tf.image.random_crop(image, cropped_shape)
@@ -94,27 +100,77 @@ def get_gen_dataset(data_dir, batch_size):
   return tf_dataset
 
 
-def create_gen_dataset_from_images(image_dir):
+def create_gen_dataset_from_images(image_dir, mask_dir):
   """Creates a dataset from the provided directory."""
   def load_image(path):
     image_str = tf.io.read_file(path)
     return tf.image.decode_image(image_str, channels=3)
 
+  def categorize_mask(mask):
+    mask = cv2.imread(mask, 0)
+    coverage = (np.count_nonzero(mask) / mask.size) * 100.0
+    if coverage <= 5.0:
+      category = 'clear'
+    elif 5.0 < coverage <= 30.0:
+      category = 'moderate'
+    elif coverage > 30.0:
+      category = 'severe'
+    return category
+
+  mod_masks = []
   files = []
   cube = []
   hypercube = []
 
-  for r in sorted(glob.glob(image_dir + "/**")):
-    for im in sorted(glob.glob(r + "/**")):
-      im = load_image(im)
-      cube.append(im)  # returns a list of 10 tensors at a time with size (256,256,3)
-      # print(cube)
+  for r, m in zip(sorted(glob.glob(image_dir + "/**")), sorted(glob.glob(mask_dir + "/**"))):
+    for im, mask, ind in zip(sorted(glob.glob(r + "/**")), sorted(glob.glob(m + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
 
-    files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,30)
+      # create a list with moderately cloudy masks to use later
+      category = categorize_mask(mask)
+      if category == 'moderate':
+        mod_masks.append(mask)
+
+      if len(mod_masks) == 0:
+        continue
+
+      # create the cube with the (T-4, ..., T-1) images masked with their own masks
+      if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
+        im_mask = cv2.imread(im)
+        curr_mask = cv2.imread(mask, 0)
+        im_mask[curr_mask > 0] = 0
+        im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+        im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
+        cube.append(im_mask)  # encoder's input
+
+      # add the last image to the cube list 2 times, with a random moderate mask + as is
+      elif ind[0] == 55:  # FIXME: Hard-coded indexes
+        im_mask = cv2.imread(im)
+        curr_mask = cv2.imread(random.choice(mod_masks), 0)
+        im_mask[curr_mask > 0] = 0
+        im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+        im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
+        cube.append(im_mask)  # encoder's input
+
+        # decoder's input
+        last_clear = load_image(im)
+        cube.append(last_clear)
+
+    # if there is no moderate cloudy mask skip the area
+    if len(mod_masks) == 0:
+      continue
+
+    # if the last image is not clear skip the area
+    last_category = categorize_mask(mask)
+    if last_category != 'clear':
+      continue
+
+    files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     # print(files)
-    hypercube.append(files)  # list of 55 tensors with size (256,256,30)
+    hypercube.append(files)  # # list of (N) selected tensors with size (256,256,T*3)
     # print(hypercube)
     cube.clear()
+    # print(mod_masks)
+    mod_masks.clear()
 
   #print(len(hypercube))
   dataset = tf.data.Dataset.from_tensor_slices((hypercube))
@@ -171,6 +227,7 @@ def get_dataset(name,
   downsample_method = config.get('downsample_method', 'area')
   num_epochs = config.get('num_epochs', -1)
   data_dir = config.get('data_dir') or data_dir
+  mask_dir = config.get('mask_dir')
   auto = tf.data.AUTOTUNE
   train = subset == 'train'
 
@@ -178,7 +235,7 @@ def get_dataset(name,
     ds = get_imagenet(subset, read_config)
   elif name == 'custom':
     assert data_dir is not None
-    ds = create_gen_dataset_from_images(data_dir)
+    ds = create_gen_dataset_from_images(data_dir, mask_dir)
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 

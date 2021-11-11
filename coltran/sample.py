@@ -36,7 +36,6 @@ from coltran.utils import base_utils
 from coltran.utils import datasets_utils
 from coltran.utils import train_utils
 
-
 # pylint: disable=g-direct-tensorflow-import
 
 # pylint: disable=missing-docstring
@@ -89,7 +88,7 @@ def build(config, batch_size, is_train=False):
   if config.model.name == 'coltran_core':
     if downsample:
       h, w = downsample_res, downsample_res
-    zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 10)), dtype=tf.int32)
     model = colorizer.ColTranCore(config.model)
     model(zero, training=is_train)
 
@@ -117,7 +116,8 @@ def get_grayscale_at_sample_time(data, downsample_res, model_name):
     curr_rgb = data['targets']
   else:
     curr_rgb = data['targets_%d' % downsample_res]
-  return tf.image.rgb_to_grayscale(curr_rgb)
+  return curr_rgb # TODO: Check dimensions (has to be a hypercube)
+  # return tf.image.rgb_to_grayscale(curr_rgb)
 
 
 def create_sample_dir(logdir, config):
@@ -152,7 +152,8 @@ def store_samples(data, config, logdir, gen_dataset=None):
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
     next_data = data.next()
-    labels = next_data['label'].numpy()
+    labels = tf.zeros((batch_size,), dtype=tf.int32).numpy()
+    #labels = next_data['label'].numpy()
 
     if gen_dataset is not None:
       next_gen_data = gen_dataset.next()

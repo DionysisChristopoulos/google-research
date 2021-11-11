@@ -153,7 +153,7 @@ def build(config, batch_size, is_train=False):
   if config.model.name == 'coltran_core':
     if downsample:
       h, w = downsample_res, downsample_res
-    zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 56)), dtype=tf.int32)
     model = colorizer.ColTranCore(config.model)
     model(zero, training=is_train)
 
