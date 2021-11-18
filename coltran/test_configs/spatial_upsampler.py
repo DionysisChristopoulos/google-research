@@ -22,15 +22,19 @@ def get_config():
   config = ConfigDict()
 
   # Data.
-  config.dataset = 'imagenet'
+  config.dataset = 'custom'
   config.downsample = True
   config.downsample_res = 64
   config.resolution = [256, 256]
   config.random_channel = True
+  config.timeline = 6
+  config.mask_dir = 'D:\\Timeseries_cropped_512\\masks_final_trainset'
+  config.data_dir = 'D:\\Timeseries_cropped_512\\videos_final_trainset'
+  config.targets_dir = 'D:\\Timeseries_cropped_512\\targets\\spatial_upsampler'
 
   # Training.
   config.batch_size = 1
-  config.max_train_steps = 50000
+  config.max_train_steps = 30000  # 50000
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999

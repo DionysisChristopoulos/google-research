@@ -25,7 +25,7 @@ from coltran.utils import datasets_utils
 import glob
 import cv2
 import random
-
+from PIL import Image
 
 def resize_to_square(image, resolution=32, train=True):
   """Preprocess the image in a way that is OK for generative modeling."""
@@ -153,7 +153,8 @@ def create_gen_dataset_from_images(image_dir, mask_dir):
 
         # decoder's input
         last_clear = load_image(im)
-        cube.append(last_clear)
+        # cube.append(last_clear)
+        cube.insert(0, last_clear)
 
     # if there is no moderate cloudy mask skip the area
     if len(mod_masks) == 0:
@@ -164,9 +165,14 @@ def create_gen_dataset_from_images(image_dir, mask_dir):
     if last_category != 'clear':
       continue
 
+    # save the randomly cloudy image for evaluation
+    gen = Image.fromarray(cube[-1], mode='RGB')
+    gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
+    # FIXME: hard-coded path for image save! change for train and test
+
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     # print(files)
-    hypercube.append(files)  # # list of (N) selected tensors with size (256,256,T*3)
+    hypercube.append(files)  # list of (N) selected tensors with size (256,256,T*3)
     # print(hypercube)
     cube.clear()
     # print(mod_masks)
@@ -251,6 +257,23 @@ def get_dataset(name,
         upsample_res=256,
         method=downsample_method)
     ds = ds.map(downsample_part, num_parallel_calls=100)
+
+  # save each clear and random cloudy image in target path for evaluation
+  target_path = config.get('targets_dir')
+  target_count = 1
+  for element in ds.as_numpy_iterator():
+    target_clear = element['targets_64'][:, :, :3].astype('uint8')
+    target_cloudy = element['targets_64'][:, :, -3:].astype('uint8')
+
+    final_clear = Image.fromarray(target_clear, mode='RGB')
+    final_cloudy = Image.fromarray(target_cloudy, mode='RGB')
+    if train:
+      final_clear.save(os.path.join(target_path, 'train', 'clear_%s.jpeg' %target_count))
+      final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_%s.jpeg' %target_count))
+    else:
+      final_clear.save(os.path.join(target_path, 'test', 'clear_%s.jpeg' %target_count))
+      final_cloudy.save(os.path.join(target_path, 'test', 'cloudy_%s.jpeg' %target_count))
+    target_count +=1
 
   if train:
     ds = ds.repeat(num_epochs)

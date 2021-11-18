@@ -28,6 +28,7 @@ from ml_collections import config_flags
 import numpy as np
 
 import tensorflow.compat.v2 as tf
+from werkzeug.debug import console
 
 from coltran import datasets
 from coltran.models import colorizer
@@ -88,7 +89,7 @@ def build(config, batch_size, is_train=False):
   if config.model.name == 'coltran_core':
     if downsample:
       h, w = downsample_res, downsample_res
-    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 10)), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = colorizer.ColTranCore(config.model)
     model(zero, training=is_train)
 
@@ -97,12 +98,12 @@ def build(config, batch_size, is_train=False):
     if downsample:
       h, w = downsample_res, downsample_res
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
-    zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.ColorUpsampler(config.model)
     model(zero, inputs_slice=zero_slice, training=is_train)
   elif config.model.name == 'spatial_upsampler':
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
-    zero = tf.zeros((batch_size, h, w, 3), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.SpatialUpsampler(config.model)
     model(zero, inputs_slice=zero_slice, training=is_train)
 
@@ -191,6 +192,10 @@ def store_samples(data, config, logdir, gen_dataset=None):
       else:
         output = model.sample(gray_cond=curr_gray, mode=sample_mode)
       logging.info('Done sampling')
+
+      #current = curr_gray[:, :, :, :3]
+      #result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
+      #print(result)
 
       for out_key, out_item in output.items():
         curr_output[out_key].append(out_item.numpy())

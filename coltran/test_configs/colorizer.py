@@ -29,6 +29,7 @@ def get_config():
   config.timeline = 6
   config.mask_dir = 'D:\\Timeseries_cropped_512\\masks_final_testset'
   config.data_dir = 'D:\\Timeseries_cropped_512\\videos_final_testset'
+  config.targets_dir = 'D:\\Timeseries_cropped_512\\targets\\colorizer'
 
   # Training.
   config.batch_size = 1
@@ -97,6 +98,6 @@ def get_config():
   config.sample.num_samples = 1
   config.sample.num_outputs = 5
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'temp5'
+  config.sample.gen_file = 'temp5_firstimages'
   return config
 

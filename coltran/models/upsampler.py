@@ -56,10 +56,10 @@ class ColorUpsampler(tf.keras.Model):
                      R, G or B channel.
       training: used only for dropout.
     Returns:
-      logits: size (B, 64, 64, 3, 256) during training or
-              size (B, 64, 64, 1, 256) during evaluation or sampling.
+      logits: size (B, 64, 64, 1, 256) during training or
+              size (B, 64, 64, 3, 256) during evaluation or sampling.
     """
-    grayscale = tf.image.rgb_to_grayscale(inputs)
+    grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
     # convert inputs to a coarse image.
     inputs_slice = base_utils.convert_bits(
         inputs_slice, n_bits_in=8, n_bits_out=3)
@@ -74,9 +74,12 @@ class ColorUpsampler(tf.keras.Model):
     logits = []
 
     # Embed grayscale image.
-    grayscale = tf.one_hot(grayscale, depth=256)
-    gray_embed = self.gray_embedding(grayscale)
-    gray_embed = tf.squeeze(gray_embed, axis=-2)
+    # input (B, 64, 64, 15)
+    grayscale = tf.one_hot(grayscale, depth=256)  # (B, 64, 64, 15, 256)
+    grayscale = tf.reshape(grayscale, [1, 64, 64, 1, -1])  # (B, 64, 64, 1, 15*256)
+    # TODO: maybe higher units in gray_embedding than hs
+    gray_embed = self.gray_embedding(grayscale)  # (B, 64, 64, 1, hs)
+    gray_embed = tf.squeeze(gray_embed, axis=-2)  # (B, 64, 64, hs)
 
     if channel_index is not None:
       channel_index = tf.reshape(channel_index, (-1, 1, 1))
@@ -93,24 +96,25 @@ class ColorUpsampler(tf.keras.Model):
         channel += 8 * channel_ind
 
       channel = tf.expand_dims(channel, axis=-1)
-      channel = tf.one_hot(channel, depth=24)
+      channel = tf.one_hot(channel, depth=24)  # (B, 64, 64, 1, 24)
 
-      channel = self.bit_embedding(channel)
-      channel = tf.squeeze(channel, axis=-2)
+      channel = self.bit_embedding(channel)  # (B, 64, 64, 1, hs)
+      channel = tf.squeeze(channel, axis=-2)  # (B, 64, 64, hs)
 
-      channel = tf.concat((channel, gray_embed), axis=-1)
-      channel = self.input_dense(channel)
+      channel = tf.concat((channel, gray_embed), axis=-1)  # (B, 64, 64, 2*hs)
+      channel = self.input_dense(channel)  # (B, 64, 64, hs)
 
-      context = self.encoder(channel, training=training)
-      channel_logits = self.final_dense(context)
+      context = self.encoder(channel, training=training)  # (B, 64, 64, hs)
+      channel_logits = self.final_dense(context)  # (B, 64, 64, 256)
       logits.append(channel_logits)
-    logits = tf.stack(logits, axis=-2)
+    logits = tf.stack(logits, axis=-2)  # (B, 64, 64, 1, 256)
     return logits
 
   def sample(self, gray_cond, bit_cond, mode='argmax'):
     output = dict()
     bit_cond_viz = base_utils.convert_bits(bit_cond, n_bits_in=3, n_bits_out=8)
     output['bit_cond'] = tf.cast(bit_cond_viz, dtype=tf.uint8)
+    gray_cond = gray_cond[:, :, :, 3:]  # FIXME: hard-coded indexing
 
     logits = self.upsampler(bit_cond, gray_cond, training=False)
 
@@ -207,7 +211,7 @@ class SpatialUpsampler(tf.keras.Model):
       logits: size (B, 256, 256, 3, 256) during training or
               size (B, 256, 256, 1, 256) during evaluation or sampling.
     """
-    grayscale = tf.image.rgb_to_grayscale(inputs)
+    grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
     logits = self.upsampler(inputs_slice, grayscale, training=training,
                             channel_index=channel_index)
     return logits, {}
@@ -216,9 +220,10 @@ class SpatialUpsampler(tf.keras.Model):
     num_channels = inputs.shape[-1]
     logits = []
 
-    grayscale = tf.one_hot(grayscale, depth=self.num_symbols)
-    gray_embed = self.gray_embedding(grayscale)
-    gray_embed = tf.squeeze(gray_embed, axis=-2)
+    grayscale = tf.one_hot(grayscale, depth=self.num_symbols)  # (B, 256, 256, 15, 256)
+    grayscale = tf.reshape(grayscale, [1, 256, 256, 1, -1])  # (B, 256, 256, 1, 15*256)
+    gray_embed = self.gray_embedding(grayscale)  # (B, 256, 256, 1, hs)
+    gray_embed = tf.squeeze(gray_embed, axis=-2)  # (B, 256, 256, hs)
 
     if channel_index is not None:
       channel_index = tf.reshape(channel_index, (-1, 1, 1))
@@ -251,6 +256,8 @@ class SpatialUpsampler(tf.keras.Model):
   def sample(self, gray_cond, inputs, mode='argmax'):
     output = dict()
     output['low_res_cond'] = tf.cast(inputs, dtype=tf.uint8)
+    gray_cond = gray_cond[:, :, :, 3:]  # FIXME: hard-coded indexing
+
     logits = self.upsampler(inputs, gray_cond, training=False)
 
     if mode == 'argmax':

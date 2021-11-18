@@ -22,15 +22,19 @@ def get_config():
   config = ConfigDict()
 
   # Data.
-  config.dataset = 'imagenet'
+  config.dataset = 'custom'
   config.downsample = True
   config.downsample_res = 64
   config.resolution = [256, 256]
   config.random_channel = True
+  config.timeline = 6
+  config.mask_dir = 'D:\\Timeseries_cropped_512\\masks_final_testset'
+  config.data_dir = 'D:\\Timeseries_cropped_512\\videos_final_testset'
+  config.targets_dir = 'D:\\Timeseries_cropped_512\\targets\\color_upsampler'
 
   # Training.
-  config.batch_size = 12
-  config.max_train_steps = 100000
+  config.batch_size = 1   # 12
+  config.max_train_steps = 30000  # 100000
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
@@ -52,13 +56,13 @@ def get_config():
   config.model.name = 'color_upsampler'
 
   config.sample = ConfigDict()
-  config.sample.gen_data_dir = 'D:\colorizer_ckpt_dir_128_4_100k\samples'
+  config.sample.gen_data_dir = 'D:\\colorizer_ckpt_dir_testcustom4\\samples'
   config.sample.log_dir = 'samples'
   config.sample.batch_size = 1
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 100
+  config.sample.num_outputs = 5
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'gen0_100_128_12bs_100k'
+  config.sample.gen_file = 'gen0_5_128_30k_temp'
 
   return config
