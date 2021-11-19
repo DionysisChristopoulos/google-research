@@ -56,13 +56,13 @@ def get_config():
   config.model.name = 'color_upsampler'
 
   config.sample = ConfigDict()
-  config.sample.gen_data_dir = 'D:\\colorizer_ckpt_dir_testcustom4\\samples'
+  config.sample.gen_data_dir = 'D:\\colorizer_ckpt_dir_64_final\\samples'
   config.sample.log_dir = 'samples'
   config.sample.batch_size = 1
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 5
+  config.sample.num_outputs = 50
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'gen0_5_128_30k_temp'
+  config.sample.gen_file = 'cup128_50samples_30ksteps_testset'
 
   return config

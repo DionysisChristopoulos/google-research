@@ -96,8 +96,8 @@ def get_config():
   config.sample.batch_size = 1
   config.sample.mode = 'sample'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 5
+  config.sample.num_outputs = 50
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'temp5_firstimages'
+  config.sample.gen_file = 'colorizer64_samples50_15ksamples_testset'
   return config
 

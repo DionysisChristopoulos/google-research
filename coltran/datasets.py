@@ -100,7 +100,7 @@ def get_gen_dataset(data_dir, batch_size):
   return tf_dataset
 
 
-def create_gen_dataset_from_images(image_dir, mask_dir):
+def create_gen_dataset_from_images(image_dir, mask_dir, train):
   """Creates a dataset from the provided directory."""
   def load_image(path):
     image_str = tf.io.read_file(path)
@@ -145,7 +145,10 @@ def create_gen_dataset_from_images(image_dir, mask_dir):
       # add the last image to the cube list 2 times, with a random moderate mask + as is
       elif ind[0] == 55:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
-        curr_mask = cv2.imread(random.choice(mod_masks), 0)
+        if train:
+          curr_mask = cv2.imread(random.choice(mod_masks), 0)
+        else:
+          curr_mask = cv2.imread(mod_masks[0], 0)
         im_mask[curr_mask > 0] = 0
         im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
         im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
@@ -162,13 +165,15 @@ def create_gen_dataset_from_images(image_dir, mask_dir):
 
     # if the last image is not clear skip the area
     last_category = categorize_mask(mask)
-    if last_category != 'clear':
+    if train and last_category != 'clear':
       continue
 
     # save the randomly cloudy image for evaluation
     gen = Image.fromarray(cube[-1], mode='RGB')
-    gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
-    # FIXME: hard-coded path for image save! change for train and test
+    if train:
+      gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.jpeg')
+    else:
+      gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     # print(files)
@@ -241,7 +246,7 @@ def get_dataset(name,
     ds = get_imagenet(subset, read_config)
   elif name == 'custom':
     assert data_dir is not None
-    ds = create_gen_dataset_from_images(data_dir, mask_dir)
+    ds = create_gen_dataset_from_images(data_dir, mask_dir, train=train)
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 

@@ -83,7 +83,6 @@ class ColTranCore(tf.keras.Model):
   def call(self, inputs, training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     enc_inputs = inputs[:, :, :, 3:]  # FIXME: hard-coded inputs for less memory
-    # enc_inputs = inputs[:, :, :, :-3]
     z = self.encoder(enc_inputs, channel_index=None, training=training)
 
     if self.is_parallel_loss:
@@ -92,7 +91,6 @@ class ColTranCore(tf.keras.Model):
       # (1, 64, 64, 1, 512)
 
     dec_logits = self.decoder(inputs[:, :, :, :3], z, training=training)  # FIXME: hard-coded only the first image (clear)
-    # dec_logits = self.decoder(inputs[:, :, :, -3:], z, training=training)
     if self.is_parallel_loss:
       return dec_logits, {'encoder_logits': enc_logits}
     return dec_logits, {}
@@ -141,7 +139,6 @@ class ColTranCore(tf.keras.Model):
       aux_output = {}
 
     labels = labels[:, :, :, :3] #FIXME: hard-coded only the first image (the clear one)
-    # labels = labels[:, :, :, -3:]
     # quantize labels.
     labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
 
@@ -168,8 +165,7 @@ class ColTranCore(tf.keras.Model):
   def sample(self, gray_cond, mode='argmax'):
     output = {}
 
-    z_gray = self.encoder(gray_cond[:, :, :, 3:], training=False)  # inputs without the ground-truth image
-    # z_gray = self.encoder(gray_cond[:, :, :, :-3], training=False)
+    z_gray = self.encoder(gray_cond[:, :, :, 3:], training=False)  #FIXME: inputs without the ground-truth image
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
       parallel_image = tf.argmax(z_logits, axis=-1, output_type=tf.int32)

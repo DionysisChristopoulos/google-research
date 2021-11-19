@@ -193,9 +193,14 @@ def store_samples(data, config, logdir, gen_dataset=None):
         output = model.sample(gray_cond=curr_gray, mode=sample_mode)
       logging.info('Done sampling')
 
-      #current = curr_gray[:, :, :, :3]
-      #result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
+      current = curr_gray[:, :, :, :3]
+      # check differences in pixel values between the ground truth and the generated sample image
+      result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
+      # check differences in pixel values between the ground truth and the generated sample image in the area of masks
+      mask_result = tf.unique_with_counts(tf.reshape(tf.abs(current[curr_gray[:, :, :, -3:] == [0, 0, 0]] - tf.cast(output['bit_up_argmax'][curr_gray[:, :, :, -3:] == [0, 0, 0]], tf.int32)), [-1]))
+
       #print(result)
+      #print(mask_result)
 
       for out_key, out_item in output.items():
         curr_output[out_key].append(out_item.numpy())
