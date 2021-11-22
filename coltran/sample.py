@@ -117,8 +117,7 @@ def get_grayscale_at_sample_time(data, downsample_res, model_name):
     curr_rgb = data['targets']
   else:
     curr_rgb = data['targets_%d' % downsample_res]
-  return curr_rgb # TODO: Check dimensions (has to be a hypercube)
-  # return tf.image.rgb_to_grayscale(curr_rgb)
+  return curr_rgb
 
 
 def create_sample_dir(logdir, config):
@@ -193,11 +192,11 @@ def store_samples(data, config, logdir, gen_dataset=None):
         output = model.sample(gray_cond=curr_gray, mode=sample_mode)
       logging.info('Done sampling')
 
-      current = curr_gray[:, :, :, :3]
+      #current = curr_gray[:, :, :, :3]
       # check differences in pixel values between the ground truth and the generated sample image
-      result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
+      #result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
       # check differences in pixel values between the ground truth and the generated sample image in the area of masks
-      mask_result = tf.unique_with_counts(tf.reshape(tf.abs(current[curr_gray[:, :, :, -3:] == [0, 0, 0]] - tf.cast(output['bit_up_argmax'][curr_gray[:, :, :, -3:] == [0, 0, 0]], tf.int32)), [-1]))
+      #mask_result = tf.unique_with_counts(tf.reshape(tf.abs(current[curr_gray[:, :, :, -3:] == [0, 0, 0]] - tf.cast(output['bit_up_argmax'][curr_gray[:, :, :, -3:] == [0, 0, 0]], tf.int32)), [-1]))
 
       #print(result)
       #print(mask_result)

@@ -130,11 +130,8 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       if category == 'moderate':
         mod_masks.append(mask)
 
-      if len(mod_masks) == 0:
-        continue
-
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
-      if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
+      if 0 <= ind[0] < 4:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         im_mask[curr_mask > 0] = 0
@@ -143,16 +140,8 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
         cube.append(im_mask)  # encoder's input
 
       # add the last image to the cube list 2 times, with a random moderate mask + as is
-      elif ind[0] == 55:  # FIXME: Hard-coded indexes
+      elif ind[0] == 4:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
-        if train:
-          curr_mask = cv2.imread(random.choice(mod_masks), 0)
-        else:
-          curr_mask = cv2.imread(mod_masks[0], 0)
-        im_mask[curr_mask > 0] = 0
-        im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
-        im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
-        cube.append(im_mask)  # encoder's input
 
         # decoder's input
         last_clear = load_image(im)
@@ -161,7 +150,18 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
 
     # if there is no moderate cloudy mask skip the area
     if len(mod_masks) == 0:
+      cube.clear()
       continue
+
+    # random masking on the last image
+    if train:
+      curr_mask = cv2.imread(random.choice(mod_masks), 0)
+    else:
+      curr_mask = cv2.imread(mod_masks[0], 0)
+    im_mask[curr_mask > 0] = 0
+    im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+    im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
+    cube.append(im_mask)  # encoder's input
 
     # if the last image is not clear skip the area
     last_category = categorize_mask(mask)

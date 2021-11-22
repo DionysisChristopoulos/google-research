@@ -98,6 +98,6 @@ def get_config():
   config.sample.num_samples = 1
   config.sample.num_outputs = 50
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'colorizer64_samples50_15ksamples_testset'
+  config.sample.gen_file = 'colorizer64_samples50_15ksteps_testset0_4'
   return config
 

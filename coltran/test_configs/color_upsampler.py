@@ -63,6 +63,6 @@ def get_config():
   config.sample.num_samples = 1
   config.sample.num_outputs = 50
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'cup128_50samples_30ksteps_testset'
+  config.sample.gen_file = 'cup128_50samples_30ksteps_testset0_4'
 
   return config
