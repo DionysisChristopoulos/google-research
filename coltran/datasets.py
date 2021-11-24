@@ -142,6 +142,10 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       # add the last image to the cube list 2 times, with a random moderate mask + as is
       elif ind[0] == 4:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
+        curr_mask = cv2.imread(mask, 0)
+        # mask the last image with its own mask for further masking later
+        im_mask[curr_mask > 0] = 0
+        im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
 
         # decoder's input
         last_clear = load_image(im)
