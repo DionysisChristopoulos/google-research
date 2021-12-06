@@ -72,8 +72,10 @@ def get_gen_dataset(data_dir, batch_size):
   """Converts a list of generated TFRecords into a TF Dataset."""
 
   def parse_example(example_proto, res=64):
+    #features = {'image': tf.io.FixedLenFeature([res * res], tf.int64)}
     features = {'image': tf.io.FixedLenFeature([res*res*3], tf.int64)}
     example = tf.io.parse_example(example_proto, features=features)
+    #image = tf.reshape(example['image'], (res, res, 1))
     image = tf.reshape(example['image'], (res, res, 3))
     return {'targets': image}
 
@@ -85,8 +87,9 @@ def get_gen_dataset(data_dir, batch_size):
 
   assert data_dir is not None
   records = tf.io.gfile.listdir(data_dir)
-  max_num = max(records, key=tf_record_name_to_num)
-  max_num = tf_record_name_to_num(max_num)
+  max_num = 0
+  #max_num = max(records, key=tf_record_name_to_num)
+  #max_num = tf_record_name_to_num(max_num)
 
   records = []
   for record in range(max_num + 1):
@@ -104,7 +107,8 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
   """Creates a dataset from the provided directory."""
   def load_image(path):
     image_str = tf.io.read_file(path)
-    return tf.image.decode_image(image_str, channels=3)
+    return tf.image.decode_image(image_str, channels=1)  # CHANGE 1
+    # return tf.image.decode_image(image_str, channels=3)
 
   def categorize_mask(mask):
     mask = cv2.imread(mask, 0)
@@ -131,17 +135,21 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
         mod_masks.append(mask)
 
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
-      if 0 <= ind[0] < 4:  # FIXME: Hard-coded indexes
-        im_mask = cv2.imread(im)
+      if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
+        im_mask = cv2.imread(im, 0)  # CHANGE 2
+        im_mask = im_mask.reshape(512, 512, 1)  # CHANGE 3
+        # im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         im_mask[curr_mask > 0] = 0
         im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
-        im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
+        # im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)  # CHANGE 4
         cube.append(im_mask)  # encoder's input
 
       # add the last image to the cube list 2 times, with a random moderate mask + as is
-      elif ind[0] == 4:  # FIXME: Hard-coded indexes
-        im_mask = cv2.imread(im)
+      elif ind[0] == 55:  # FIXME: Hard-coded indexes
+        im_mask = cv2.imread(im, 0)  # CHANGE 5
+        im_mask = im_mask.reshape(512, 512, 1)  # CHANGE 6
+        # im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         # mask the last image with its own mask for further masking later
         im_mask[curr_mask > 0] = 0
@@ -164,7 +172,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       curr_mask = cv2.imread(mod_masks[0], 0)
     im_mask[curr_mask > 0] = 0
     im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
-    im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
+    # im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)  # CHANGE 7
     cube.append(im_mask)  # encoder's input
 
     # if the last image is not clear skip the area
@@ -173,11 +181,12 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       continue
 
     # save the randomly cloudy image for evaluation
-    gen = Image.fromarray(cube[-1], mode='RGB')
+    # CHANGE 8
+    gen = Image.fromarray(cube[-1].reshape(512, 512), mode='L')
     if train:
-      gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.jpeg')
+        gen.save('D:\\Datasets\\Timeseries_B2_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.png')
     else:
-      gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
+        gen.save('D:\\Datasets\\Timeseries_B2_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.png')
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     # print(files)
@@ -254,6 +263,7 @@ def get_dataset(name,
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 
+  # FIXME: If downsample is false manually give the desired resolution
   ds = ds.map(
       lambda x: preprocess(x, train=train), num_parallel_calls=100)
   if train and random_channel:
@@ -271,18 +281,26 @@ def get_dataset(name,
   target_path = config.get('targets_dir')
   target_count = 1
   for element in ds.as_numpy_iterator():
-    target_clear = element['targets_64'][:, :, :3].astype('uint8')
-    target_cloudy = element['targets_64'][:, :, -3:].astype('uint8')
-
-    final_clear = Image.fromarray(target_clear, mode='RGB')
-    final_cloudy = Image.fromarray(target_cloudy, mode='RGB')
-    if train:
-      final_clear.save(os.path.join(target_path, 'train', 'clear_%s.jpeg' %target_count))
-      final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_%s.jpeg' %target_count))
+    # target_clear = element['targets_64'][:, :, :3].astype('uint8')
+    # target_cloudy = element['targets_64'][:, :, -3:].astype('uint8')
+    if downsample:
+      target_clear = element['targets_64'][:, :, :1].astype('uint8')
+      target_cloudy = element['targets_64'][:, :, -1].astype('uint8')
     else:
-      final_clear.save(os.path.join(target_path, 'test', 'clear_%s.jpeg' %target_count))
-      final_cloudy.save(os.path.join(target_path, 'test', 'cloudy_%s.jpeg' %target_count))
-    target_count +=1
+      target_clear = element['targets'][:, :, :1].astype('uint8')
+      target_cloudy = element['targets'][:, :, -1].astype('uint8')
+
+    # final_clear = Image.fromarray(target_clear, mode='RGB')
+    # final_cloudy = Image.fromarray(target_cloudy, mode='RGB')
+    final_clear = Image.fromarray(target_clear.reshape(downsample_res, downsample_res), mode='L')
+    final_cloudy = Image.fromarray(target_cloudy.reshape(downsample_res, downsample_res), mode='L')
+    if train:
+      final_clear.save(os.path.join(target_path, 'train', 'clear_' + '{:03}'.format(target_count) + ".png"))
+      final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_' + '{:03}'.format(target_count) + ".png"))
+    else:
+      final_clear.save(os.path.join(target_path, 'test', 'clear_' + '{:03}'.format(target_count) + ".png"))
+      final_cloudy.save(os.path.join(target_path, 'test', 'cloudy_' + '{:03}'.format(target_count) + ".png"))
+    target_count += 1
 
   if train:
     ds = ds.repeat(num_epochs)

@@ -59,7 +59,8 @@ class ColorUpsampler(tf.keras.Model):
       logits: size (B, 64, 64, 1, 256) during training or
               size (B, 64, 64, 3, 256) during evaluation or sampling.
     """
-    grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
+    grayscale = inputs[:, :, :, 1:]
+    #grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
     # convert inputs to a coarse image.
     inputs_slice = base_utils.convert_bits(
         inputs_slice, n_bits_in=8, n_bits_out=3)
@@ -114,7 +115,8 @@ class ColorUpsampler(tf.keras.Model):
     output = dict()
     bit_cond_viz = base_utils.convert_bits(bit_cond, n_bits_in=3, n_bits_out=8)
     output['bit_cond'] = tf.cast(bit_cond_viz, dtype=tf.uint8)
-    gray_cond = gray_cond[:, :, :, 3:]  # FIXME: hard-coded indexing
+    gray_cond = gray_cond[:, :, :, 1:]
+    #gray_cond = gray_cond[:, :, :, 3:]  # FIXME: hard-coded indexing
 
     logits = self.upsampler(bit_cond, gray_cond, training=False)
 
@@ -211,7 +213,8 @@ class SpatialUpsampler(tf.keras.Model):
       logits: size (B, 256, 256, 3, 256) during training or
               size (B, 256, 256, 1, 256) during evaluation or sampling.
     """
-    grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
+    grayscale = inputs[:, :, :, 1:]
+    #grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
     logits = self.upsampler(inputs_slice, grayscale, training=training,
                             channel_index=channel_index)
     return logits, {}
@@ -256,7 +259,8 @@ class SpatialUpsampler(tf.keras.Model):
   def sample(self, gray_cond, inputs, mode='argmax'):
     output = dict()
     output['low_res_cond'] = tf.cast(inputs, dtype=tf.uint8)
-    gray_cond = gray_cond[:, :, :, 3:]  # FIXME: hard-coded indexing
+    gray_cond = gray_cond[:, :, :, 1:]
+    #gray_cond = gray_cond[:, :, :, 3:]  # FIXME: hard-coded indexing
 
     logits = self.upsampler(inputs, gray_cond, training=False)
 

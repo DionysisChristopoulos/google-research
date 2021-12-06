@@ -22,6 +22,7 @@ the AxialTransformer with conditional self-attention layers.
 See Section 3 and Section 4.1 of https://openreview.net/pdf?id=5NA1PinlGFu
 for more details.
 """
+import numpy as np
 import tensorflow.compat.v2 as tf
 from tensorflow.compat.v2.keras import layers
 from coltran.models import core
@@ -38,7 +39,8 @@ class ColTranCore(tf.keras.Model):
 
     # 3 bits per channel, 8 colors per channel, a total of 512 colors.
     self.num_symbols_per_channel = 2**3
-    self.num_symbols = self.num_symbols_per_channel**3
+    self.num_symbols = 256
+    # self.num_symbols = self.num_symbols_per_channel**3
     self.gray_symbols, self.num_channels = 256, 1
 
     self.enc_cfg = config.encoder
@@ -82,7 +84,8 @@ class ColTranCore(tf.keras.Model):
 
   def call(self, inputs, training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
-    enc_inputs = inputs[:, :, :, 3:]  # FIXME: hard-coded inputs for less memory
+    enc_inputs = inputs[:, :, :, 1:]
+    #enc_inputs = inputs[:, :, :, 3:]  # FIXME: hard-coded inputs for less memory
     z = self.encoder(enc_inputs, channel_index=None, training=training)
 
     if self.is_parallel_loss:
@@ -90,7 +93,8 @@ class ColTranCore(tf.keras.Model):
       enc_logits = tf.expand_dims(enc_logits, axis=-2)
       # (1, 64, 64, 1, 512)
 
-    dec_logits = self.decoder(inputs[:, :, :, :3], z, training=training)  # FIXME: hard-coded only the first image (clear)
+    dec_logits = self.decoder(inputs[:, :, :, :1], z, training=training)
+    #dec_logits = self.decoder(inputs[:, :, :, :3], z, training=training)  # FIXME: hard-coded only the first image (clear)
     if self.is_parallel_loss:
       return dec_logits, {'encoder_logits': enc_logits}
     return dec_logits, {}
@@ -99,11 +103,12 @@ class ColTranCore(tf.keras.Model):
     """Decodes grayscale representation and masked colors into logits."""
     # (H, W, 512) preprocessing.
     # quantize to 3 bits.
-    labels = base_utils.convert_bits(inputs, n_bits_in=8, n_bits_out=3)
+    # labels = base_utils.convert_bits(inputs, n_bits_in=8, n_bits_out=3)
 
     # bin each channel triplet -> (H, W, 3) with 8 possible symbols
     # (H, W, 512)
-    labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    #labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    labels = tf.squeeze(inputs, axis=-1)
 
     # (H, W) with 512 symbols to (H, W, 512)
     labels = tf.one_hot(labels, depth=self.num_symbols)
@@ -138,12 +143,14 @@ class ColTranCore(tf.keras.Model):
     if aux_output is None:
       aux_output = {}
 
-    labels = labels[:, :, :, :3] #FIXME: hard-coded only the first image (the clear one)
+    labels = labels[:, :, :, :1]
+    #labels = labels[:, :, :, :3] #FIXME: hard-coded only the first image (the clear one)
     # quantize labels.
-    labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
+    #labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
 
     # bin each channel triplet.
-    labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    #labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    labels = tf.squeeze(labels, axis=-1)
 
     loss = self.image_loss(logits, labels)
     enc_logits = aux_output.get('encoder_logits')
@@ -165,15 +172,17 @@ class ColTranCore(tf.keras.Model):
   def sample(self, gray_cond, mode='argmax'):
     output = {}
 
-    z_gray = self.encoder(gray_cond[:, :, :, 3:], training=False)  #FIXME: inputs without the ground-truth image
+    z_gray = self.encoder(gray_cond[:, :, :, 1:], training=False)
+    #z_gray = self.encoder(gray_cond[:, :, :, 3:], training=False)  #FIXME: inputs without the ground-truth image
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
       parallel_image = tf.argmax(z_logits, axis=-1, output_type=tf.int32)
-      parallel_image = self.post_process_image(parallel_image)
+      #parallel_image = self.post_process_image(parallel_image)
 
       output['parallel'] = parallel_image
 
     image, proba = self.autoregressive_sample(z_gray=z_gray, mode=mode)
+    print(image.shape)
     output['auto_%s' % mode] = image
     output['proba'] = proba
     return output
@@ -255,7 +264,7 @@ class ColTranCore(tf.keras.Model):
           inputs=(channel_cache.cache, z_gray), training=False)
 
     image = tf.stack(pixel_samples, axis=1)
-    image = self.post_process_image(image)
+    #image = self.post_process_image(image)
 
     image_proba = tf.stack(pixel_probas, axis=1)
     return image, image_proba

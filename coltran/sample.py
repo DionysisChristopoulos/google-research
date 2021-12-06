@@ -89,21 +89,25 @@ def build(config, batch_size, is_train=False):
   if config.model.name == 'coltran_core':
     if downsample:
       h, w = downsample_res, downsample_res
-    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, config.get('timeline', 6)), dtype=tf.int32)
+    #zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = colorizer.ColTranCore(config.model)
     model(zero, training=is_train)
 
-  c = 1 if is_train else 3
+  #c = 1 if is_train else 3
+  c = 1
   if config.model.name == 'color_upsampler':
     if downsample:
       h, w = downsample_res, downsample_res
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
-    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, config.get('timeline', 6)), dtype=tf.int32)
+    #zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.ColorUpsampler(config.model)
     model(zero, inputs_slice=zero_slice, training=is_train)
   elif config.model.name == 'spatial_upsampler':
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
-    zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
+    zero = tf.zeros((batch_size, h, w, config.get('timeline', 6)), dtype=tf.int32)
+    #zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.SpatialUpsampler(config.model)
     model(zero, inputs_slice=zero_slice, training=is_train)
 
