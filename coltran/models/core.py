@@ -69,7 +69,7 @@ class GrayScaleEncoder(layers.Layer):
   def call(self, inputs, channel_index=None, training=True):
     if len(inputs.shape) == 4: #(B,64,64,30)
       num_channels = inputs.shape[-1]
-      logits=[]
+      logits=None
 
       if channel_index is not None:
           channel_index = tf.reshape(channel_index, (-1, 1, 1))
@@ -81,21 +81,24 @@ class GrayScaleEncoder(layers.Layer):
               # single random channel slice during training.
               # channel_index is the index of the random channel.
               # each channel has 8 possible symbols.
-              channel += 8 * channel_index
+              channel += 256 * channel_index
           else:
-              channel += 8 * channel_ind
+              channel += 256 * channel_ind
 
           channel = tf.expand_dims(channel, axis=-1)
-          channel = tf.one_hot(channel, depth=256)
+          channel = tf.one_hot(channel, depth=768)
 
           channel = self.embedding(channel)
           channel = tf.squeeze(channel, axis=-2)
 
           context = self.encoder(channel, training=training)
-          logits.append(context)
+          # logits.append(context)
 
-    logits = tf.stack(logits, axis=-2)  # (B,64,64,30,128)
-    logits = tf.reduce_sum(logits, axis=3)  # (B,64,64,128) # TODO: Check other aggregation strategies
+      if logits is None:
+        logits = context
+      else:
+        logits += context  # (B,64,64,30,128)
+    # logits = tf.reduce_sum(logits, axis=3)  # (B,64,64,128) # TODO: Check other aggregation strategies
     return logits
 
 
