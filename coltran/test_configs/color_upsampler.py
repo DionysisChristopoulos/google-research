@@ -28,9 +28,9 @@ def get_config():
   config.resolution = [256, 256]
   config.random_channel = True
   config.timeline = 6
-  config.mask_dir = 'D:\\Timeseries_cropped_512\\masks_final_testset'
-  config.data_dir = 'D:\\Timeseries_cropped_512\\videos_final_testset'
-  config.targets_dir = 'D:\\Timeseries_cropped_512\\targets\\color_upsampler'
+  config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_trainset'
+  config.data_dir = 'D:\\Datasets\\Timeseries_cropped_512\\videos_final_trainset'
+  config.targets_dir = 'D:\\Datasets\\Timeseries_cropped_512\\targets\\color_upsampler'
 
   # Training.
   config.batch_size = 1   # 12
