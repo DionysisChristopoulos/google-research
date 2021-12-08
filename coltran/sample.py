@@ -116,8 +116,10 @@ def build(config, batch_size, is_train=False):
   return model, optimizer, ema
 
 
-def get_grayscale_at_sample_time(data, downsample_res, model_name):
+def get_grayscale_at_sample_time(data, downsample_res, model_name, downsample):
   if model_name == 'spatial_upsampler':
+    curr_rgb = data['targets']
+  if not downsample:
     curr_rgb = data['targets']
   else:
     curr_rgb = data['targets_%d' % downsample_res]
@@ -136,6 +138,7 @@ def create_sample_dir(logdir, config):
 
 def store_samples(data, config, logdir, gen_dataset=None):
   """Stores the generated samples."""
+  downsample = config.get('downsample')
   downsample_res = config.get('downsample_res', 64)
   num_samples = config.sample.num_samples
   num_outputs = config.sample.num_outputs
@@ -164,7 +167,7 @@ def store_samples(data, config, logdir, gen_dataset=None):
 
     # Gets grayscale image based on the model.
     curr_gray = get_grayscale_at_sample_time(next_data, downsample_res,
-                                             config.model.name)
+                                             config.model.name, downsample)
 
     curr_output = collections.defaultdict(list)
     for sample_ind in range(num_samples):

@@ -175,6 +175,15 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
     # im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)  # CHANGE 7
     cube.append(im_mask)  # encoder's input
 
+    # apply random masking on every image during training
+    # if train:
+    #     for i in range(len(cube) - 1):
+    #         curr_mask = cv2.imread(random.choice(mod_masks), 0)
+    #         img = cube[i+1]
+    #         img[curr_mask > 0] = 0
+    #         img[curr_mask == 0] = img[curr_mask == 0]
+    #         cube[i + 1] = img
+
     # if the last image is not clear skip the area
     last_category = categorize_mask(mask)
     if train and last_category != 'clear':
@@ -265,7 +274,7 @@ def get_dataset(name,
 
   # FIXME: If downsample is false manually give the desired resolution
   ds = ds.map(
-      lambda x: preprocess(x, train=train), num_parallel_calls=100)
+      lambda x: preprocess(x, train=train, resolution=256), num_parallel_calls=100)
   if train and random_channel:
     ds = ds.map(datasets_utils.random_channel_slice)
   if downsample:
@@ -286,14 +295,16 @@ def get_dataset(name,
     if downsample:
       target_clear = element['targets_64'][:, :, :1].astype('uint8')
       target_cloudy = element['targets_64'][:, :, -1].astype('uint8')
+      final_clear = Image.fromarray(target_clear.reshape(downsample_res, downsample_res), mode='L')
+      final_cloudy = Image.fromarray(target_cloudy.reshape(downsample_res, downsample_res), mode='L')
     else:
       target_clear = element['targets'][:, :, :1].astype('uint8')
       target_cloudy = element['targets'][:, :, -1].astype('uint8')
+      final_clear = Image.fromarray(target_clear.reshape(config.resolution), mode='L')
+      final_cloudy = Image.fromarray(target_cloudy.reshape(config.resolution), mode='L')
 
-    # final_clear = Image.fromarray(target_clear, mode='RGB')
-    # final_cloudy = Image.fromarray(target_cloudy, mode='RGB')
-    final_clear = Image.fromarray(target_clear.reshape(downsample_res, downsample_res), mode='L')
-    final_cloudy = Image.fromarray(target_cloudy.reshape(downsample_res, downsample_res), mode='L')
+    # final_clear = Image.fromarray(target_clear.reshape(downsample_res, downsample_res), mode='L')
+    # final_cloudy = Image.fromarray(target_cloudy.reshape(downsample_res, downsample_res), mode='L')
     if train:
       final_clear.save(os.path.join(target_path, 'train', 'clear_' + '{:03}'.format(target_count) + ".png"))
       final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_' + '{:03}'.format(target_count) + ".png"))
