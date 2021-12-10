@@ -130,7 +130,7 @@ def create_sample_dir(logdir, config):
   return sample_dir
 
 
-def store_samples(data, config, logdir, gen_dataset=None):
+def store_samples(data, config, logdir, subset, gen_dataset=None):
   """Stores the generated samples."""
   downsample_res = config.get('downsample_res', 64)
   num_samples = config.sample.num_samples
@@ -148,6 +148,10 @@ def store_samples(data, config, logdir, gen_dataset=None):
   train_utils.restore(model, checkpoints, logdir, ema)
   num_steps_v = optimizer.iterations.numpy()
   logging.info('Producing sample after %d training steps.', num_steps_v)
+
+  sample_summary_dir = os.path.join(
+      logdir, 'sample_{}'.format(subset))
+  writer_smr = tf.summary.create_file_writer(sample_summary_dir)
 
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
@@ -192,7 +196,19 @@ def store_samples(data, config, logdir, gen_dataset=None):
         output = model.sample(gray_cond=curr_gray, mode=sample_mode)
       logging.info('Done sampling')
 
-      #current = curr_gray[:, :, :, :3]
+      current = tf.cast(curr_gray[:, :, :, :3], dtype=tf.uint8)
+      cube = tf.cast(curr_gray[:, :, :, 3:], dtype=tf.uint8)
+      cube = tf.reshape(cube, [1, cube.shape[1], cube.shape[2], -1, 3])
+      cube = tf.squeeze(tf.transpose(cube, [3,1,2,4,0]))
+      with writer_smr.as_default():
+        tf.summary.image(f'GT', current, step=sample_ind)
+        tf.summary.image(f'Input', cube[::-1,...], step=sample_ind, 
+                          max_outputs=1)
+        for out_key, out_val in output.items():
+          if 'sample' in out_key:            
+            tf.summary.image(f'Sample', 
+                tf.cast(out_val, dtype=tf.uint8),
+                step=sample_ind)
       # check differences in pixel values between the ground truth and the generated sample image
       #result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
       # check differences in pixel values between the ground truth and the generated sample image in the area of masks
@@ -252,7 +268,7 @@ def sample(logdir, subset):
     gen_tf_dataset = gen_tf_dataset.skip(skip_batches)
     gen_iter = iter(gen_tf_dataset)
 
-  store_samples(data_iter, config, logdir, gen_iter)
+  store_samples(data_iter, config, logdir, subset, gen_iter)
 
 
 def main(_):
