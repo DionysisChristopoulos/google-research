@@ -126,6 +126,12 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
   cube = []
   hypercube = []
 
+  # for m in sorted(glob.glob(mask_dir + "/**")):
+  #   for mask in sorted(glob.glob(m + "/**")):
+  #     category = categorize_mask(mask)
+  #     if category == 'moderate':
+  #       mod_masks.append(mask)
+
   for r, m in zip(sorted(glob.glob(image_dir + "/**")), sorted(glob.glob(mask_dir + "/**"))):
     for im, mask, ind in zip(sorted(glob.glob(r + "/**")), sorted(glob.glob(m + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
 
@@ -133,6 +139,11 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       category = categorize_mask(mask)
       if category == 'moderate':
         mod_masks.append(mask)
+
+  # random.seed(10)
+
+  # for r in sorted(glob.glob(image_dir + "/**")):
+  #   for im, ind in zip(sorted(glob.glob(r + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
 
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
       if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
@@ -154,6 +165,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
         # mask the last image with its own mask for further masking later
         im_mask[curr_mask > 0] = 0
         im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+        # cube.append(im_mask)
 
         # decoder's input
         last_clear = load_image(im)
@@ -191,11 +203,11 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
 
     # save the randomly cloudy image for evaluation
     # CHANGE 8
-    gen = Image.fromarray(cube[-1].reshape(512, 512), mode='L')
-    if train:
-        gen.save('D:\\Datasets\\Timeseries_B2_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.png')
-    else:
-        gen.save('D:\\Datasets\\Timeseries_B2_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.png')
+    # gen = Image.fromarray(cube[-1].reshape(512, 512), mode='L')
+    # if train:
+    #     gen.save('D:\\Datasets\\Median_B2_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.png')
+    # else:
+    #     gen.save('D:\\Datasets\\Median_B2_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.png')
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     # print(files)

@@ -27,9 +27,9 @@ def get_config():
   config.downsample_res = 64
   config.resolution = [256, 256]  # [256, 256]
   config.timeline = 6
-  config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_trainset'
-  config.data_dir = 'D:\\Datasets\\Timeseries_B2_512\\videos_B2_trainset'
-  config.targets_dir = 'D:\\Datasets\\Timeseries_B2_512\\targets_128\\colorizer'
+  config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_testset'
+  config.data_dir = 'D:\\Datasets\\Timeseries_B2_512\\videos_B2_testset'
+  config.targets_dir = 'D:\\Datasets\\Timeseries_B4_512\\targets\\colorizer'
 
   # Training.
   config.batch_size = 1
@@ -98,6 +98,6 @@ def get_config():
   config.sample.num_samples = 1
   config.sample.num_outputs = 50
   config.sample.skip_batches = 0
-  config.sample.gen_file = '50samples_B2_colorizer64_8bits'
+  config.sample.gen_file = 'temp'
   return config
 
