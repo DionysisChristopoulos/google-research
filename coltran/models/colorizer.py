@@ -83,6 +83,7 @@ class ColTranCore(tf.keras.Model):
   def call(self, inputs, training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
     enc_inputs = inputs[:, :, :, 3:]  # FIXME: hard-coded inputs for less memory
+    # enc_inputs = inputs[:, :, :, 3+channel_index::3]
     z = self.encoder(enc_inputs, channel_index=None, training=training)
 
     if self.is_parallel_loss:
@@ -104,8 +105,18 @@ class ColTranCore(tf.keras.Model):
     # bin each channel triplet -> (H, W, 3) with 8 possible symbols
     # (H, W, 512)
     labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    # channel = input[:,:,:,channel_index]
+    # if channel_index is not None:
+    #     # single random channel slice during training.
+    #     # channel_index is the index of the random channel.
+    #     # each channel has 8 possible symbols.
+    #     channel += 256 * channel_index
+    # else:
+    #     channel += 256 * channel_ind
+
 
     # (H, W) with 512 symbols to (H, W, 512)
+    # labels = tf.one_hot(channel, depth=768)
     labels = tf.one_hot(labels, depth=self.num_symbols)
 
     h_dec = self.pixel_embed_layer(labels)

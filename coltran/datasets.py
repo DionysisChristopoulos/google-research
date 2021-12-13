@@ -172,12 +172,12 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
     if train and last_category != 'clear':
       continue
 
-    # save the randomly cloudy image for evaluation
-    gen = Image.fromarray(cube[-1], mode='RGB')
-    if train:
-      gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.jpeg')
-    else:
-      gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
+    # # save the randomly cloudy image for evaluation
+    # gen = Image.fromarray(cube[-1], mode='RGB')
+    # if train:
+    #   gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.jpeg')
+    # else:
+    #   gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     # print(files)
@@ -269,6 +269,9 @@ def get_dataset(name,
 
   # save each clear and random cloudy image in target path for evaluation
   target_path = config.get('targets_dir')
+  if not os.path.exists(target_path):
+    os.makedirs(os.path.join(target_path, 'train'))
+    os.makedirs(os.path.join(target_path, 'test'))
   target_count = 1
   for element in ds.as_numpy_iterator():
     target_clear = element['targets_64'][:, :, :3].astype('uint8')
