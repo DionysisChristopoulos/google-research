@@ -131,7 +131,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
         mod_masks.append(mask)
 
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
-      if 0 <= ind[0] < 4:  # FIXME: Hard-coded indexes
+      if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         im_mask[curr_mask > 0] = 0
@@ -140,7 +140,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
         cube.append(im_mask)  # encoder's input
 
       # add the last image to the cube list 2 times, with a random moderate mask + as is
-      elif ind[0] == 4:  # FIXME: Hard-coded indexes
+      elif ind[0] == 55:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         # mask the last image with its own mask for further masking later
@@ -274,17 +274,21 @@ def get_dataset(name,
     os.makedirs(os.path.join(target_path, 'test'))
   target_count = 1
   for element in ds.as_numpy_iterator():
-    target_clear = element['targets_64'][:, :, :3].astype('uint8')
-    target_cloudy = element['targets_64'][:, :, -3:].astype('uint8')
+    if downsample:
+      target_clear = element['targets_64'][:, :, :3].astype('uint8')
+      target_cloudy = element['targets_64'][:, :, -3:].astype('uint8')
+    else:
+      target_clear = element['targets'][:, :, :3].astype('uint8')
+      target_cloudy = element['targets'][:, :, -3:].astype('uint8')
 
     final_clear = Image.fromarray(target_clear, mode='RGB')
     final_cloudy = Image.fromarray(target_cloudy, mode='RGB')
     if train:
-      final_clear.save(os.path.join(target_path, 'train', 'clear_%s.jpeg' %target_count))
-      final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_%s.jpeg' %target_count))
+      final_clear.save(os.path.join(target_path, 'train', 'clear_' + '{:03}'.format(target_count) + ".png"))
+      final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_' + '{:03}'.format(target_count) + ".png"))
     else:
-      final_clear.save(os.path.join(target_path, 'test', 'clear_%s.jpeg' %target_count))
-      final_cloudy.save(os.path.join(target_path, 'test', 'cloudy_%s.jpeg' %target_count))
+      final_clear.save(os.path.join(target_path, 'test', 'clear_' + '{:03}'.format(target_count) + ".png"))
+      final_cloudy.save(os.path.join(target_path, 'test', 'cloudy_' + '{:03}'.format(target_count) + ".png"))
     target_count +=1
 
   if train:
