@@ -24,8 +24,10 @@ import os
 from absl import app
 from absl import flags
 from absl import logging
+from cv2 import CAP_PROP_XI_COLUMN_FPN_CORRECTION
 from ml_collections import config_flags
 import numpy as np
+from tensorflow.python.ops.image_ops_impl import ssim
 
 import tensorflow.compat.v2 as tf
 from werkzeug.debug import console
@@ -152,7 +154,9 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
   sample_summary_dir = os.path.join(
       logdir, 'sample_{}'.format(subset))
   writer_smr = tf.summary.create_file_writer(sample_summary_dir)
-
+  
+  psnr_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
+  ssim_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
     next_data = data.next()
@@ -165,7 +169,7 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
     # Gets grayscale image based on the model.
     curr_gray = get_grayscale_at_sample_time(next_data, downsample_res,
                                              config.model.name)
-
+  
     curr_output = collections.defaultdict(list)
     for sample_ind in range(num_samples):
       logging.info('Batch no: %d, Sample no: %d', batch_ind, sample_ind)
@@ -195,20 +199,7 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
       else:
         output = model.sample(gray_cond=curr_gray, mode=sample_mode)
       logging.info('Done sampling')
-
-      current = tf.cast(curr_gray[:, :, :, :3], dtype=tf.uint8)
-      cube = tf.cast(curr_gray[:, :, :, 3:], dtype=tf.uint8)
-      cube = tf.reshape(cube, [1, cube.shape[1], cube.shape[2], -1, 3])
-      cube = tf.squeeze(tf.transpose(cube, [3,1,2,4,0]))
-      with writer_smr.as_default():
-        tf.summary.image(f'GT', current, step=sample_ind)
-        tf.summary.image(f'Input', cube[::-1,...], step=sample_ind, 
-                          max_outputs=1)
-        for out_key, out_val in output.items():
-          if 'sample' in out_key:            
-            tf.summary.image(f'Sample', 
-                tf.cast(out_val, dtype=tf.uint8),
-                step=sample_ind)
+      
       # check differences in pixel values between the ground truth and the generated sample image
       #result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
       # check differences in pixel values between the ground truth and the generated sample image in the area of masks
@@ -219,6 +210,39 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
 
       for out_key, out_item in output.items():
         curr_output[out_key].append(out_item.numpy())
+
+    input_cube = tf.cast(curr_gray, dtype=tf.uint8)
+    current = input_cube[..., :3]
+    current_comp = current
+    if config.model.name == 'coltran_core':
+      current_comp = base_utils.convert_bits(current_comp, n_bits_out=3, n_bits_in=8)
+      current_comp = base_utils.convert_bits(current_comp, n_bits_out=8, n_bits_in=3)
+      current_comp = tf.cast(current_comp, dtype=tf.uint8)
+    cube = tf.reshape(input_cube[..., 3:], list(input_cube.shape[0:3]) + [-1, 3])
+    cube = tf.transpose(cube, [3,1,2,4,0])
+    sample_key = None
+    for out_key, out_val in output.items():
+      if ('sample' in out_key or 'argmax' in out_key):
+        sample_key = out_key
+        output_samples = np.concatenate(curr_output[sample_key], axis=0)
+        break
+    if sample_key:
+      for local_ind in range(batch_size):
+        output_ind = batch_ind*batch_size + local_ind
+        if sample_key:
+          psnr_vals[output_ind, :] = tf.image.psnr(output_samples[local_ind::batch_size,...], 
+                                                    current_comp[local_ind,...], 255)
+          ssim_vals[output_ind, :] = tf.image.ssim(output_samples[local_ind::batch_size,...], 
+                                                    current_comp[local_ind,...], 255)
+          logging.info("Output %d, PSNR: %.4f/%.4f, SSIM: %.4f/%.4f", output_ind,
+                np.average(psnr_vals[output_ind, :]), np.std(psnr_vals[output_ind, :]),
+                np.average(ssim_vals[output_ind, :]), np.std(ssim_vals[output_ind, :]))
+
+          with writer_smr.as_default():
+            tf.summary.image(f'GT', current[local_ind:local_ind+1,...], step=output_ind)
+            tf.summary.image(f'Input', cube[::-1,:,:,:,local_ind], step=output_ind, 
+                              max_outputs=1)
+            tf.summary.image(f'Samples', output_samples[local_ind::batch_size,...], step=output_ind)
 
     # concatenate samples across width.
     for out_key, out_val in curr_output.items():
@@ -232,6 +256,10 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
           serialized = array_to_tf_example(single_ex, label)
           writer.write(serialized)
 
+  std_mean = lambda arr: np.sqrt(np.sum(np.var(arr, axis=1)))/arr.shape[0]
+  logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f", 
+                np.average(psnr_vals), std_mean(psnr_vals),
+                np.average(ssim_vals), std_mean(ssim_vals))
   writer.close()
 
 
