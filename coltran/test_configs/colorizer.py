@@ -29,7 +29,7 @@ def get_config():
   config.timeline = 6
   config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_testset'
   config.data_dir = 'D:\\Datasets\\Timeseries_B2_512\\videos_B2_testset'
-  config.targets_dir = 'D:\\Datasets\\Timeseries_B4_512\\targets\\colorizer'
+  config.targets_dir = 'D:\\Datasets\\Timeseries_B2_512\\targets\\colorizer'
 
   # Training.
   config.batch_size = 1
@@ -95,7 +95,7 @@ def get_config():
   config.sample.log_dir = 'samples'
   config.sample.batch_size = 1
   config.sample.mode = 'sample'
-  config.sample.num_samples = 1
+  config.sample.num_samples = 2
   config.sample.num_outputs = 50
   config.sample.skip_batches = 0
   config.sample.gen_file = 'temp'

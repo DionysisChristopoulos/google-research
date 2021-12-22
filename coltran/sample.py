@@ -24,7 +24,9 @@ import os
 from absl import app
 from absl import flags
 from absl import logging
+from cv2 import CAP_PROP_XI_COLUMN_FPN_CORRECTION
 from ml_collections import config_flags
+from tensorflow.python.ops.image_ops_impl import ssim
 import numpy as np
 
 import tensorflow.compat.v2 as tf
@@ -90,7 +92,6 @@ def build(config, batch_size, is_train=False):
     if downsample:
       h, w = downsample_res, downsample_res
     zero = tf.zeros((batch_size, h, w, config.get('timeline', 6)), dtype=tf.int32)
-    #zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = colorizer.ColTranCore(config.model)
     model(zero, training=is_train)
 
@@ -101,13 +102,11 @@ def build(config, batch_size, is_train=False):
       h, w = downsample_res, downsample_res
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
     zero = tf.zeros((batch_size, h, w, config.get('timeline', 6)), dtype=tf.int32)
-    #zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.ColorUpsampler(config.model)
     model(zero, inputs_slice=zero_slice, training=is_train)
   elif config.model.name == 'spatial_upsampler':
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
     zero = tf.zeros((batch_size, h, w, config.get('timeline', 6)), dtype=tf.int32)
-    #zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.SpatialUpsampler(config.model)
     model(zero, inputs_slice=zero_slice, training=is_train)
 
@@ -136,7 +135,7 @@ def create_sample_dir(logdir, config):
   return sample_dir
 
 
-def store_samples(data, config, logdir, gen_dataset=None):
+def store_samples(data, config, logdir, subset, gen_dataset=None):
   """Stores the generated samples."""
   downsample = config.get('downsample')
   downsample_res = config.get('downsample_res', 64)
@@ -156,6 +155,12 @@ def store_samples(data, config, logdir, gen_dataset=None):
   num_steps_v = optimizer.iterations.numpy()
   logging.info('Producing sample after %d training steps.', num_steps_v)
 
+  sample_summary_dir = os.path.join(
+      logdir, 'sample_{}'.format(subset))
+  writer_smr = tf.summary.create_file_writer(sample_summary_dir)
+
+  psnr_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
+  ssim_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
     next_data = data.next()
@@ -199,7 +204,6 @@ def store_samples(data, config, logdir, gen_dataset=None):
         output = model.sample(gray_cond=curr_gray, mode=sample_mode)
       logging.info('Done sampling')
 
-      #current = curr_gray[:, :, :, :3]
       # check differences in pixel values between the ground truth and the generated sample image
       #result = tf.unique_with_counts(tf.reshape(tf.abs(current[:] - tf.cast(output['bit_up_argmax'][:], tf.int32)), [-1]))
       # check differences in pixel values between the ground truth and the generated sample image in the area of masks
@@ -210,6 +214,40 @@ def store_samples(data, config, logdir, gen_dataset=None):
 
       for out_key, out_item in output.items():
         curr_output[out_key].append(out_item.numpy())
+
+    input_cube = tf.cast(curr_gray, dtype=tf.int32)
+    current = input_cube[..., :1]
+    current_comp = current
+    # if config.model.name == 'coltran_core':
+    #   current_comp = base_utils.convert_bits(current_comp, n_bits_out=3, n_bits_in=8)
+    #   current_comp = base_utils.convert_bits(current_comp, n_bits_out=8, n_bits_in=3)
+    #   current_comp = tf.cast(current_comp, dtype=tf.uint8)
+    cube = tf.reshape(input_cube[..., 1:], list(input_cube.shape[0:3]) + [-1, 1])
+    cube = tf.transpose(cube, [3,1,2,4,0])
+    sample_key = None
+    for out_key, out_val in output.items():
+      if ('sample' in out_key or 'argmax' in out_key):
+        sample_key = out_key
+        output_samples = np.concatenate(curr_output[sample_key], axis=0)
+        output_samples = np.expand_dims(output_samples, axis=-1)
+        break
+    if sample_key:
+      for local_ind in range(batch_size):
+        output_ind = batch_ind*batch_size + local_ind
+        if sample_key:
+          psnr_vals[output_ind, :] = tf.image.psnr(output_samples[local_ind::batch_size,...],
+                                                    current_comp[local_ind,...], 255)
+          ssim_vals[output_ind, :] = tf.image.ssim(output_samples[local_ind::batch_size,...],
+                                                    current_comp[local_ind,...], 255)
+          logging.info("Output %d, PSNR: %.4f/%.4f, SSIM: %.4f/%.4f", output_ind,
+                np.average(psnr_vals[output_ind, :]), np.std(psnr_vals[output_ind, :]),
+                np.average(ssim_vals[output_ind, :]), np.std(ssim_vals[output_ind, :]))
+
+          with writer_smr.as_default():
+            tf.summary.image(f'GT', tf.cast(current[local_ind:local_ind+1,...], dtype=tf.uint8), step=output_ind)
+            tf.summary.image(f'Input', tf.cast(cube[::-1,:,:,:,local_ind], dtype=tf.uint8), step=output_ind,
+                              max_outputs=1)
+            tf.summary.image(f'Samples', tf.cast(output_samples[local_ind::batch_size,...], dtype=tf.uint8), step=output_ind)
 
     # concatenate samples across width.
     for out_key, out_val in curr_output.items():
@@ -222,6 +260,14 @@ def store_samples(data, config, logdir, gen_dataset=None):
         for single_ex, label in zip(curr_out_val, labels):
           serialized = array_to_tf_example(single_ex, label)
           writer.write(serialized)
+
+  nz = (psnr_vals == float('Inf')).sum(1)
+  psnr_vals = psnr_vals[nz == 0, :]
+
+  std_mean = lambda arr: np.sqrt(np.sum(np.var(arr, axis=1)))/arr.shape[0]
+  logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f",
+                np.average(psnr_vals), std_mean(psnr_vals),
+                np.average(ssim_vals), std_mean(ssim_vals))
 
   writer.close()
 
@@ -259,7 +305,7 @@ def sample(logdir, subset):
     gen_tf_dataset = gen_tf_dataset.skip(skip_batches)
     gen_iter = iter(gen_tf_dataset)
 
-  store_samples(data_iter, config, logdir, gen_iter)
+  store_samples(data_iter, config, logdir, subset, gen_iter)
 
 
 def main(_):
