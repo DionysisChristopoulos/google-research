@@ -49,8 +49,9 @@ def random_channel_slice(x):
       shape=[], minval=0, maxval=3, dtype=tf.int32)
   targets = x['targets']
   res = targets.shape[1]
-  image_slice = targets[Ellipsis, random_channel: random_channel+1]
-  image_slice.set_shape([res, res, 1])
+  ch = targets.shape[2]
+  image_slice = targets[Ellipsis, random_channel::3]
+  image_slice.set_shape([res, res, ch//3])
   x['targets_slice'] = image_slice
   x['channel_index'] = random_channel
   return x

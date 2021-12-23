@@ -37,9 +37,8 @@ class ColTranCore(tf.keras.Model):
     self.config = config
 
     # 3 bits per channel, 8 colors per channel, a total of 512 colors.
-    self.num_symbols_per_channel = 2**3
-    self.num_symbols = self.num_symbols_per_channel**3
-    self.gray_symbols, self.num_channels = 256, 1
+    self.num_symbols = 256
+    self.num_symbols_flat = 768
 
     self.enc_cfg = config.encoder
     self.dec_cfg = config.decoder
@@ -80,70 +79,85 @@ class ColTranCore(tf.keras.Model):
         units=self.num_symbols, name='auto_logits')
     self.final_norm = layers.LayerNormalization()
 
-  def call(self, inputs, training=True):
+  def call(self, inputs, inputs_slice, channel_index=None, training=True):
     # encodes grayscale (H, W) into activations of shape (H, W, 512).
-    enc_inputs = inputs[:, :, :, 3:]  # FIXME: hard-coded inputs for less memory
-    z = self.encoder(enc_inputs, channel_index=None, training=training)
+    if channel_index is not None:
+      dec_inputs, enc_inputs = tf.split(inputs_slice, [1,-1], axis=3)
+    else:
+      dec_inputs, enc_inputs = tf.split(inputs_slice, [3,-1], axis=3)
+    z = self.encoder(enc_inputs, channel_index=channel_index, training=training)
 
     if self.is_parallel_loss:
       enc_logits = self.parallel_dense(z)
-      enc_logits = tf.expand_dims(enc_logits, axis=-2)
+      # enc_logits = tf.expand_dims(enc_logits, axis=-2)
       # (1, 64, 64, 1, 512)
 
-    dec_logits = self.decoder(inputs[:, :, :, :3], z, training=training)  # FIXME: hard-coded only the first image (clear)
+    dec_logits = self.decoder(dec_inputs, z, channel_index=channel_index, training=training)
     if self.is_parallel_loss:
       return dec_logits, {'encoder_logits': enc_logits}
     return dec_logits, {}
 
-  def decoder(self, inputs, z, training):
+  def decoder(self, inputs, z, channel_index=None, training=True):
     """Decodes grayscale representation and masked colors into logits."""
-    # (H, W, 512) preprocessing.
-    # quantize to 3 bits.
-    labels = base_utils.convert_bits(inputs, n_bits_in=8, n_bits_out=3)
+    num_channels = inputs.shape[-1]
+    logits = []
+    
+    if channel_index is not None:
+        channel_index = tf.reshape(channel_index, (-1, 1, 1))
 
-    # bin each channel triplet -> (H, W, 3) with 8 possible symbols
-    # (H, W, 512)
-    labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    for channel_ind in range(num_channels):
+      channel = inputs[Ellipsis, channel_ind]
 
-    # (H, W) with 512 symbols to (H, W, 512)
-    labels = tf.one_hot(labels, depth=self.num_symbols)
+      if channel_index is not None:
+          # single random channel slice during training.
+          # channel_index is the index of the random channel.
+          # each channel has 8 possible symbols.
+          channel += 256 * channel_index
+      else:
+          channel += 256 * channel_ind
 
-    h_dec = self.pixel_embed_layer(labels)
-    h_upper = self.outer_decoder((h_dec, z), training=training)
-    h_inner = self.inner_decoder((h_dec, h_upper, z), training=training)
+      channel = tf.expand_dims(channel, axis=-1)
+      channel = tf.one_hot(channel, depth=self.num_symbols_flat)
 
-    activations = self.final_norm(h_inner)
-    logits = self.final_dense(activations)
-    return tf.expand_dims(logits, axis=-2)
+      channel = self.pixel_embed_layer(channel)
+      h_dec = tf.squeeze(channel, axis=-2)
+
+      h_upper = self.outer_decoder((h_dec, z[...,channel_ind,:]), training=training)
+      h_inner = self.inner_decoder((h_dec, h_upper, z[...,channel_ind,:]), training=training)
+
+      activations = self.final_norm(h_inner)
+      logits.append(self.final_dense(activations))
+    logits = tf.stack(logits, axis=-2)
+    return logits
 
   def image_loss(self, logits, labels):
     """Cross-entropy between the logits and labels."""
-    height, width = labels.shape[1:3]
-    logits = tf.squeeze(logits, axis=-2)
+    height, width, num_channel = labels.shape[1:4]
+    # logits = tf.squeeze(logits, axis=-2)
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits)
     loss = tf.reduce_mean(loss, axis=0)
     loss = base_utils.nats_to_bits(tf.reduce_sum(loss))
-    return loss / (height * width)
+    return loss / (height * width * num_channel)
 
   def loss(self, targets, logits, train_config, training, aux_output=None):
     """Converts targets to coarse colors and computes log-likelihood."""
-    downsample = train_config.get('downsample', False)
+    is_downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    if downsample:
+    if is_downsample and training:
+      labels = targets['targets_slice_%d' % downsample_res]
+    elif is_downsample:
       labels = targets['targets_%d' % downsample_res]
+    elif training:
+      labels = targets['targets_slice']
     else:
       labels = targets['targets']
 
     if aux_output is None:
       aux_output = {}
 
-    labels = labels[:, :, :, :3] #FIXME: hard-coded only the first image (the clear one)
-    # quantize labels.
-    labels = base_utils.convert_bits(labels, n_bits_in=8, n_bits_out=3)
-
-    # bin each channel triplet.
-    labels = base_utils.labels_to_bins(labels, self.num_symbols_per_channel)
+    c = 1 if training else 3
+    labels = labels[:, :, :, :c]
 
     loss = self.image_loss(logits, labels)
     enc_logits = aux_output.get('encoder_logits')
@@ -156,11 +170,19 @@ class ColTranCore(tf.keras.Model):
   def get_logits(self, inputs_dict, train_config, training):
     is_downsample = train_config.get('downsample', False)
     downsample_res = train_config.get('downsample_res', 64)
-    if is_downsample:
-      inputs = inputs_dict['targets_%d' % downsample_res]
+    channel_index = inputs_dict['channel_index'] if training else None
+    inputs_key = 'targets_%d' % downsample_res if is_downsample else 'targets'
+    inputs = inputs_dict[inputs_key]
+    if is_downsample and training:
+      inputs_slice = inputs_dict['targets_slice_%d' % downsample_res]
+    elif is_downsample:
+      inputs_slice = inputs_dict['targets_%d' % downsample_res]
+    elif training:
+      inputs_slice = inputs_dict['targets_slice']
     else:
-      inputs = inputs_dict['targets']
-    return self(inputs=inputs, training=training)
+      inputs_slice = inputs_dict['targets']
+
+    return self(inputs=inputs, inputs_slice=inputs_slice, channel_index=channel_index)
 
   def sample(self, gray_cond, mode='argmax'):
     output = {}
@@ -169,16 +191,23 @@ class ColTranCore(tf.keras.Model):
     if self.is_parallel_loss:
       z_logits = self.parallel_dense(z_gray)
       parallel_image = tf.argmax(z_logits, axis=-1, output_type=tf.int32)
-      parallel_image = self.post_process_image(parallel_image)
+      # parallel_image = self.post_process_image(parallel_image)
 
       output['parallel'] = parallel_image
-
-    image, proba = self.autoregressive_sample(z_gray=z_gray, mode=mode)
-    output['auto_%s' % mode] = image
-    output['proba'] = proba
+    
+    ch_context = z_gray
+    images = []
+    probas = []
+    for ch in range(3):
+      image, proba = self.autoregressive_sample(z_gray=ch_context[...,ch,:], channel=ch, mode=mode)
+      # ch_context += self.encoder(image, channel_index=ch, training=False)
+      images.append(image)
+      probas.append(proba)
+    output['auto_%s' % mode] = tf.stack(images,axis=-1)
+    output['proba'] = tf.stack(images,axis=-1)
     return output
 
-  def autoregressive_sample(self, z_gray, mode='sample'):
+  def autoregressive_sample(self, z_gray, channel, mode='sample'):
     """Generates pixel-by-pixel.
 
     1. The encoder is run once per-channel.
@@ -235,7 +264,7 @@ class ColTranCore(tf.keras.Model):
                                          training=False)
 
         pixel_sample, pixel_embed, pixel_proba = self.act_logit_sample_embed(
-            activations, col, mode=mode)
+            activations, col, channel, mode=mode)
         proba_row.append(pixel_proba)
         gen_row.append(pixel_sample)
 
@@ -255,12 +284,12 @@ class ColTranCore(tf.keras.Model):
           inputs=(channel_cache.cache, z_gray), training=False)
 
     image = tf.stack(pixel_samples, axis=1)
-    image = self.post_process_image(image)
+    # image = self.post_process_image(image)
 
     image_proba = tf.stack(pixel_probas, axis=1)
     return image, image_proba
 
-  def act_logit_sample_embed(self, activations, col_ind, mode='sample'):
+  def act_logit_sample_embed(self, activations, col_ind, channel, mode='sample'):
     """Converts activations[col_ind] to the output pixel.
 
     Activation -> Logit -> Sample -> Embedding.
@@ -287,8 +316,8 @@ class ColTranCore(tf.keras.Model):
     elif mode == 'argmax':
       pixel_sample = tf.argmax(pixel_logits, axis=-1, output_type=tf.int32)
 
-    pixel_sample_expand = tf.reshape(pixel_sample, [batch_size, 1, 1])
-    pixel_one_hot = tf.one_hot(pixel_sample_expand, depth=self.num_symbols)
+    pixel_sample_expand = tf.reshape(pixel_sample+256*channel, [batch_size, 1, 1])
+    pixel_one_hot = tf.one_hot(pixel_sample_expand, depth=self.num_symbols_flat)
     pixel_embed = self.pixel_embed_layer(pixel_one_hot)
     return pixel_sample, pixel_embed, pixel_proba
 
