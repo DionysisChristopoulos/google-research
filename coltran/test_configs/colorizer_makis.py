@@ -39,7 +39,7 @@ def get_config():
   config.num_epochs = -1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
-  config.eval_batch_size = 16
+  config.eval_batch_size = 8
   config.eval_checkpoint_wait_secs = -1
 
   # loss hparams.
@@ -63,7 +63,9 @@ def get_config():
   config.model.encoder.hidden_size = 64
   config.model.encoder.num_heads = 4
   config.model.encoder.num_encoder_layers = 4
+  config.model.encoder.num_temp_layers = 2
   config.model.encoder.dropout = 0.0
+  config.model.encoder.aggregation = 'attention'
 
   # decoder
   config.model.decoder = ConfigDict()
@@ -95,9 +97,9 @@ def get_config():
   config.sample = ConfigDict()
   config.sample.log_dir = 'samples'
   config.sample.batch_size = 1
-  config.sample.mode = 'sample'
+  config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 1
+  config.sample.num_outputs = 10
   config.sample.skip_batches = 0
   config.sample.gen_file = 'colorizer64_samples50_15ksteps_testset0_4'
   return config

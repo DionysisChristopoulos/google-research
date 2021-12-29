@@ -63,7 +63,9 @@ def get_config():
   config.model.encoder.hidden_size = 64
   config.model.encoder.num_heads = 4
   config.model.encoder.num_encoder_layers = 4
+  config.model.encoder.num_temp_layers = 2
   config.model.encoder.dropout = 0.0
+  config.model.encoder.aggregation = 'attention'
 
   # decoder
   config.model.decoder = ConfigDict()

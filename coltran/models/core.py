@@ -67,33 +67,36 @@ class GrayScaleEncoder(layers.Layer):
     self.encoder = coltran_layers.FactorizedAttention(self.config)
     height, width, num_channels = input_shapes[1:]
     self.input_length = num_channels
-    self.temp_layers = []
-    num_layers = 2
-    num_norms = num_layers * 2
-    self.layer_norms = [layers.LayerNormalization() for _ in range(num_norms)]
-    for layer_ind in range(2):
-      umask_temp = coltran_layers.SelfAttentionND(
-            hidden_size=self.config.hidden_size, 
-            num_heads=self.config.num_heads,
-            nd_block_size=[1, self.input_length],
-            name='unmask_temp_att_%d' % layer_ind)
-      
-      ff_temp = tf.keras.Sequential([
-          layers.Dense(units=self.config.ff_size, activation='relu'),
-          layers.Dense(units=self.config.hidden_size)
-      ], name='col_dense_%d' % layer_ind)
+    self.pos_embed = coltran_layers.PositionEmbed(axes=3, max_lengths=num_channels)
+    
+    if self.config.aggregation == 'attention':
+      num_norms = self.config.num_temp_layers * 2
+      self.layer_norms = [layers.LayerNormalization() for _ in range(num_norms)]
 
-      self.temp_layers.append(umask_temp)
-      self.temp_layers.append(ff_temp)
-    self.project_aggr = coltran_layers.DenseND(
-            self.config.hidden_size, 
-            contract_axes=2, 
-            name='aggregate')
+      self.temp_layers = []
+      for layer_ind in range(self.config.num_temp_layers):
+        umask_temp = coltran_layers.SelfAttentionND(
+              hidden_size=self.config.hidden_size, 
+              num_heads=self.config.num_heads,
+              nd_block_size=[1, self.input_length],
+              name='unmask_temp_att_%d' % layer_ind)
+        
+        ff_temp = tf.keras.Sequential([
+            layers.Dense(units=self.config.ff_size, activation='relu'),
+            layers.Dense(units=self.config.hidden_size)
+        ], name='temp_dense_%d' % layer_ind)
 
-    # self.seq = Sequential()
-    # self.seq.add(layers.Conv3D(16, [1,1,1], activation='relu', 
-    #             input_shape=(None,None,None,num_filters)))
-    # self.seq.add(layers.Conv3D(1, [1,1,1],))
+        self.temp_layers.append(umask_temp)
+        self.temp_layers.append(ff_temp)
+      self.project_aggr = coltran_layers.DenseND(
+              self.config.hidden_size, 
+              contract_axes=2, 
+              name='aggregate')
+    elif self.config.aggregation == 'conv':
+      self.seq = Sequential()
+      self.seq.add(layers.Conv3D(self.config.hidden_size, [1,1,1], activation='relu', 
+                  input_shape=(None,None,None,num_channels)))
+      self.seq.add(layers.Conv3D(1, [1,1,1],))
 
   def call(self, inputs, channel_index=None, training=True):
     batch, height, width, num_channels = inputs.shape
@@ -127,25 +130,37 @@ class GrayScaleEncoder(layers.Layer):
 
       context = self.encoder(channel, training=training)
       
-      # if logits[index] is None:
-      #   logits[index] = context
-      # else:
-      #   logits[index] += context  # (B,64,64,30,128)
-      logits[index].append(context)
+      if self.config.aggregation == 'sum':
+        if len(logits[index]) == 0:
+          logits[index] = context
+        else:
+          logits[index] += context  # (B,64,64,30,128)
+      else:
+        logits[index].append(context)
+    if self.config.aggregation == 'sum':
+      logits = tf.stack(logits, axis=-2)
+      return logits
     for ind in range(len(logits)):
       temp_context = tf.stack(logits[ind], axis=-2)
-      # logits[ind] = tf.reshape(temp_context, [batch, height, width, -1])
-      # temp_context = tf.reshape(temp_context, [batch, self.input_length, -1])
-      temp_context = tf.reshape(temp_context, 
-                          [batch, height*width, self.input_length, -1])
-      for layer in self.temp_att_layers:
-        temp_context = layer(temp_context)
-      temp_context = self.project_aggr(temp_context)
-      
-      logits[ind] = tf.reshape(temp_context, [batch, height, width, -1])
-      # logits[ind] = tf.squeeze(temp_context, axis=-1)
+      temp_context = self.pos_embed(temp_context)
+      if self.config.aggregation == 'conv':
+        temp_context = tf.transpose(temp_context, [0, 1, 2, 4, 3])
+        temp_context = self.seq(temp_context)
+        logits[ind] = tf.squeeze(temp_context, axis=-1)
+      elif self.config.aggregation == 'attention':
+        temp_context = tf.reshape(temp_context, 
+                            [batch, height*width, self.input_length, -1])
+        temp_input = temp_context
+        for layer, norm in zip(self.temp_layers, self.layer_norms):
+          temp_output = layer(temp_input)
+          temp_output = coltran_layers.residual_dropout(
+              temp_input, temp_output, self.config.dropout, training)
+          temp_input = norm(temp_output)
+        temp_context = temp_input
+        temp_context = self.project_aggr(temp_context)
+        
+        logits[ind] = tf.reshape(temp_context, [batch, height, width, -1])
     logits = tf.stack(logits, axis=-2)
-    # logits = tf.reduce_sum(logits, axis=3)  # (B,64,64,128) # TODO: Check other aggregation strategies
     return logits
 
 
