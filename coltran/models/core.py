@@ -29,7 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow.compat.v2 as tf
-from tensorflow.compat.v2.keras import layers
+from tensorflow.compat.v2.keras import layers, Sequential
 from coltran.models import layers as coltran_layers
 from coltran.utils import base_utils
 
@@ -65,13 +65,43 @@ class GrayScaleEncoder(layers.Layer):
   def build(self, input_shapes):
     self.embedding = layers.Dense(units=self.config.hidden_size)
     self.encoder = coltran_layers.FactorizedAttention(self.config)
+    height, width, num_channels = input_shapes[1:]
+    self.input_length = num_channels
+    self.temp_layers = []
+    num_layers = 2
+    num_norms = num_layers * 2
+    self.layer_norms = [layers.LayerNormalization() for _ in range(num_norms)]
+    for layer_ind in range(2):
+      umask_temp = coltran_layers.SelfAttentionND(
+            hidden_size=self.config.hidden_size, 
+            num_heads=self.config.num_heads,
+            nd_block_size=[1, self.input_length],
+            name='unmask_temp_att_%d' % layer_ind)
+      
+      ff_temp = tf.keras.Sequential([
+          layers.Dense(units=self.config.ff_size, activation='relu'),
+          layers.Dense(units=self.config.hidden_size)
+      ], name='col_dense_%d' % layer_ind)
+
+      self.temp_layers.append(umask_temp)
+      self.temp_layers.append(ff_temp)
+    self.project_aggr = coltran_layers.DenseND(
+            self.config.hidden_size, 
+            contract_axes=2, 
+            name='aggregate')
+
+    # self.seq = Sequential()
+    # self.seq.add(layers.Conv3D(16, [1,1,1], activation='relu', 
+    #             input_shape=(None,None,None,num_filters)))
+    # self.seq.add(layers.Conv3D(1, [1,1,1],))
 
   def call(self, inputs, channel_index=None, training=True):
-    num_channels = inputs.shape[-1]
+    batch, height, width, num_channels = inputs.shape
+    
     if channel_index is not None:
-      logits=[None]
+      logits=[[]]
     else:
-      logits=3*[None]
+      logits=[[],[],[]]
     index = 0
     
     if channel_index is not None:
@@ -96,12 +126,24 @@ class GrayScaleEncoder(layers.Layer):
       channel = tf.squeeze(channel, axis=-2)
 
       context = self.encoder(channel, training=training)
-      # logits.append(context)
       
-      if logits[index] is None:
-        logits[index] = context
-      else:
-        logits[index] += context  # (B,64,64,30,128)
+      # if logits[index] is None:
+      #   logits[index] = context
+      # else:
+      #   logits[index] += context  # (B,64,64,30,128)
+      logits[index].append(context)
+    for ind in range(len(logits)):
+      temp_context = tf.stack(logits[ind], axis=-2)
+      # logits[ind] = tf.reshape(temp_context, [batch, height, width, -1])
+      # temp_context = tf.reshape(temp_context, [batch, self.input_length, -1])
+      temp_context = tf.reshape(temp_context, 
+                          [batch, height*width, self.input_length, -1])
+      for layer in self.temp_att_layers:
+        temp_context = layer(temp_context)
+      temp_context = self.project_aggr(temp_context)
+      
+      logits[ind] = tf.reshape(temp_context, [batch, height, width, -1])
+      # logits[ind] = tf.squeeze(temp_context, axis=-1)
     logits = tf.stack(logits, axis=-2)
     # logits = tf.reduce_sum(logits, axis=3)  # (B,64,64,128) # TODO: Check other aggregation strategies
     return logits
