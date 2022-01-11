@@ -252,6 +252,10 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
           serialized = array_to_tf_example(single_ex, label)
           writer.write(serialized)
 
+  std_mean = lambda arr: np.sqrt(np.sum(np.var(arr, axis=1)))/arr.shape[0]
+  logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f", 
+                np.average(psnr_vals), std_mean(psnr_vals),
+                np.average(ssim_vals), std_mean(ssim_vals))
   writer.close()
 
 
