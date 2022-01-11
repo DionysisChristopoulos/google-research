@@ -25,7 +25,7 @@ from coltran.utils import datasets_utils
 import glob
 import cv2
 import random
-from PIL import Image
+from absl import logging
 
 def resize_to_square(image, resolution=32, train=True):
   """Preprocess the image in a way that is OK for generative modeling."""
@@ -53,18 +53,33 @@ def preprocess(example, train=True, resolution=256):
   image = example
 
   is_label = False
+  mask = None
   if isinstance(example, dict):
     image = example['image']
     is_label = 'label' in example.keys()
+    mask = tf.cast(example['mask'], tf.uint8)
+
+  if mask is not None:
+    ind_mask = image.shape[-1]
+    image = tf.concat((image, mask), axis=2)
 
   image = resize_to_square(image, train=train, resolution=resolution)
 
   # keepng 'file_name' key creates some undebuggable TPU Error.
   example_copy = dict()
+  if mask is not None:
+    image, mask = tf.split(image, [ind_mask, -1], axis=2)
+    targets = image * tf.keras.backend.repeat_elements(mask, 3, axis=2)
+    # mask = tf.cast(mask, tf.bool)
+    example_copy['mask'] = mask
+  else:
+    targets = image
+
   example_copy['image'] = image
-  example_copy['targets'] = image
+  example_copy['targets'] = targets
   if is_label:
     example_copy['label'] = example['label']
+
   return example_copy
 
 
@@ -120,7 +135,9 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
   mod_masks = []
   files = []
   cube = []
+  cloud_masks = []
   hypercube = []
+  masks_hcube = []
 
   for r, m in zip(sorted(glob.glob(image_dir + "/**")), sorted(glob.glob(mask_dir + "/**"))):
     for im, mask, ind in zip(sorted(glob.glob(r + "/**")), sorted(glob.glob(m + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
@@ -134,8 +151,9 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
-        im_mask[curr_mask > 0] = 0
-        im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+        cloud_masks.append(curr_mask == 0)
+        # im_mask[curr_mask > 0] = 0
+        # im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
         im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
         cube.append(im_mask)  # encoder's input
 
@@ -143,18 +161,22 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       elif ind[0] == 55:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
+        cloud_masks.append(curr_mask == 0)
         # mask the last image with its own mask for further masking later
-        im_mask[curr_mask > 0] = 0
-        im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+        # im_mask[curr_mask > 0] = 0
+        # im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
 
         # decoder's input
         last_clear = load_image(im)
         # cube.append(last_clear)
         cube.insert(0, last_clear)
+        cloud_masks.insert(0, curr_mask == 0)
 
     # if there is no moderate cloudy mask skip the area
     if len(mod_masks) == 0:
       cube.clear()
+      cloud_masks.clear()
+      logging.info("Not enough moderate cloudy masks found, skipping")
       continue
 
     # random masking on the last image
@@ -162,14 +184,27 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       curr_mask = cv2.imread(random.choice(mod_masks), 0)
     else:
       curr_mask = cv2.imread(mod_masks[0], 0)
-    im_mask[curr_mask > 0] = 0
-    im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
+    cloud_masks[-1] *= curr_mask == 0
+    # im_mask[curr_mask > 0] = 0
+    # im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
     im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
     cube.append(im_mask)  # encoder's input
 
+    # apply random masking on every image during training
+    if train:
+      for i in range(len(cube) - 1):
+        curr_mask = cv2.imread(random.choice(mod_masks), 0)
+        cloud_masks[i+1] *= curr_mask == 0
+        img = cube[i+1]
+        # img[curr_mask > 0] = 0
+        # img[curr_mask == 0] = img[curr_mask == 0]
+        cube[i + 1] = img
+    
     # if the last image is not clear skip the area
     last_category = categorize_mask(mask)
     if train and last_category != 'clear':
+      cube.clear()
+      cloud_masks.clear()
       continue
 
     # save the randomly cloudy image for evaluation
@@ -180,16 +215,22 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
     #   gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
-    # print(files)
-    hypercube.append(files)  # list of (N) selected tensors with size (256,256,T*3)
-    # print(hypercube)
-    cube.clear()
-    # print(mod_masks)
-    mod_masks.clear()
+    cube_masks = tf.stack(cloud_masks, axis=2)
 
+    yield {'image': files, 'mask': cube_masks}
+    # # print(files)
+    # hypercube.append(files)  # list of (N) selected tensors with size (256,256,T*3)
+    # masks_hcube.append(cube_masks)
+    # # print(hypercube)
+    cube.clear()
+    cloud_masks.clear()
+    
+    # # print(mod_masks)
+    # mod_masks.clear()
+  
   #print(len(hypercube))
-  dataset = tf.data.Dataset.from_tensor_slices((hypercube))
-  return dataset
+  # dataset = tf.data.Dataset.from_tensor_slices({'image': (hypercube), 'mask': (masks_hcube)})
+  # return dataset
 
 
 def get_imagenet(subset, read_config):
@@ -250,7 +291,11 @@ def get_dataset(name,
     ds = get_imagenet(subset, read_config)
   elif name == 'custom':
     assert data_dir is not None
-    ds = create_gen_dataset_from_images(data_dir, mask_dir, train=train)
+    ds = tf.data.Dataset.from_generator(
+              lambda: create_gen_dataset_from_images(data_dir, mask_dir, train=train),
+              output_signature={'image': tf.TensorSpec(shape=(None,None,config.timeline*3), dtype=tf.uint8),
+                                'mask': tf.TensorSpec(shape=(None,None,config.timeline), dtype=tf.bool)}
+          )
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 
@@ -267,23 +312,8 @@ def get_dataset(name,
         method=downsample_method)
     ds = ds.map(downsample_part, num_parallel_calls=100)
 
-  # # save each clear and random cloudy image in target path for evaluation
-  # target_path = config.get('targets_dir')
-  # target_count = 1
-  # for element in ds.as_numpy_iterator():
-  #   target_clear = element['targets_64'][:, :, :3].astype('uint8')
-  #   target_cloudy = element['targets_64'][:, :, -3:].astype('uint8')
-
-  #   final_clear = Image.fromarray(target_clear, mode='RGB')
-  #   final_cloudy = Image.fromarray(target_cloudy, mode='RGB')
-  #   if train:
-  #     final_clear.save(os.path.join(target_path, 'train', 'clear_%s.jpeg' %target_count))
-  #     final_cloudy.save(os.path.join(target_path, 'train', 'cloudy_%s.jpeg' %target_count))
-  #   else:
-  #     final_clear.save(os.path.join(target_path, 'test', 'clear_%s.jpeg' %target_count))
-  #     final_cloudy.save(os.path.join(target_path, 'test', 'cloudy_%s.jpeg' %target_count))
-  #   target_count +=1
-
+  # datasets_utils.save_dataset(ds, config.get('targets_dir'), train)
+  
   if train:
     ds = ds.repeat(num_epochs)
     ds = ds.shuffle(buffer_size=128)
