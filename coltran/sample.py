@@ -130,7 +130,6 @@ def create_sample_dir(logdir, config):
   logging.info('writing samples at: %s', sample_dir)
   return sample_dir
 
-
 def store_samples(data, config, logdir, subset, gen_dataset=None):
   """Stores the generated samples."""
   downsample_res = config.get('downsample_res', 64)
@@ -156,6 +155,7 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
 
   psnr_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
   ssim_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
+  mse_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
     next_data = data.next()
@@ -226,19 +226,26 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
     if sample_key:
       for local_ind in range(batch_size):
         output_ind = batch_ind*batch_size + local_ind
+        gen_im = output_samples[local_ind::batch_size,...]
+        ref_im = current_comp[local_ind,...]
         psnr_vals[output_ind, :] = tf.image.psnr(output_samples[local_ind::batch_size,...], 
-                                                  current_comp[local_ind,...], 255)
+                                                  ref_im, 255)
         ssim_vals[output_ind, :] = tf.image.ssim(output_samples[local_ind::batch_size,...], 
-                                                  current_comp[local_ind,...], 255)
-        logging.info("Output %d, PSNR: %.4f/%.4f, SSIM: %.4f/%.4f", output_ind,
+                                                  ref_im, 255)
+        mse_vals[output_ind, :] = tf.reduce_mean(tf.metrics.mse(tf.cast(gen_im, tf.float32), tf.cast(ref_im, tf.float32)))
+        logging.info("Output %d, PSNR: %.4f/%.4f, SSIM: %.4f/%.4f, MSE: %.4f/%.4f", output_ind,
               np.average(psnr_vals[output_ind, :]), np.std(psnr_vals[output_ind, :]),
-              np.average(ssim_vals[output_ind, :]), np.std(ssim_vals[output_ind, :]))
+              np.average(ssim_vals[output_ind, :]), np.std(ssim_vals[output_ind, :]),
+              np.average(mse_vals[output_ind, :]), np.std(mse_vals[output_ind, :]))
 
-        with writer_smr.as_default():
-          tf.summary.image(f'GT', current[local_ind:local_ind+1,...], step=output_ind)
-          tf.summary.image(f'Input', cube[::-1,:,:,:,local_ind], step=output_ind, 
+        with writer_smr.as_default():          
+          tf.summary.scalar('PSNR', np.average(psnr_vals[output_ind, :]), step=output_ind)
+          tf.summary.scalar('SSIM', np.average(ssim_vals[output_ind, :]), step=output_ind)
+          tf.summary.scalar('MSE', np.average(mse_vals[output_ind, :]), step=output_ind)
+          tf.summary.image('GT', current[local_ind:local_ind+1,...], step=output_ind)
+          tf.summary.image('Input', cube[::-1,:,:,:,local_ind], step=output_ind, 
                             max_outputs=1)
-          tf.summary.image(f'Samples', output_samples[local_ind::batch_size,...], step=output_ind)
+          tf.summary.image('Samples', output_samples[local_ind::batch_size,...], step=output_ind)
 
     # concatenate samples across width.
     for out_key, out_val in curr_output.items():
@@ -253,9 +260,10 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
           writer.write(serialized)
 
   std_mean = lambda arr: np.sqrt(np.sum(np.var(arr, axis=1)))/arr.shape[0]
-  logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f", 
+  logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f, Average MSE: %.4f/%.4f", 
                 np.average(psnr_vals), std_mean(psnr_vals),
-                np.average(ssim_vals), std_mean(ssim_vals))
+                np.average(ssim_vals), std_mean(ssim_vals),
+                np.average(mse_vals), std_mean(mse_vals))
   writer.close()
 
 
