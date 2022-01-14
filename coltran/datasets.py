@@ -115,7 +115,7 @@ def get_gen_dataset(data_dir, batch_size):
   return tf_dataset
 
 
-def create_gen_dataset_from_images(image_dir, mask_dir, train):
+def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
   """Creates a dataset from the provided directory."""
   def load_image(path):
     image_str = tf.io.read_file(path)
@@ -123,7 +123,12 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
 
   def categorize_mask(mask):
     mask = cv2.imread(mask, 0)
-    coverage = (np.count_nonzero(mask) / mask.size) * 100.0
+    six = (mask.shape[0]-config.resolution[0])//2
+    eix = (mask.shape[0]+config.resolution[0])//2
+    siy = (mask.shape[1]-config.resolution[1])//2
+    eiy = (mask.shape[1]+config.resolution[1])//2
+    mask_val = mask[six:eix,siy:eiy]
+    coverage = (np.count_nonzero(mask_val) / mask_val.size) * 100.0
     if coverage <= 5.0:
       category = 'clear'
     elif 5.0 < coverage <= 30.0:
@@ -136,8 +141,6 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
   files = []
   cube = []
   cloud_masks = []
-  hypercube = []
-  masks_hcube = []
 
   for r, m in zip(sorted(glob.glob(image_dir + "/**")), sorted(glob.glob(mask_dir + "/**"))):
     for im, mask, ind in zip(sorted(glob.glob(r + "/**")), sorted(glob.glob(m + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
@@ -173,10 +176,10 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
         cloud_masks.insert(0, curr_mask == 0)
 
     # if there is no moderate cloudy mask skip the area
-    if len(mod_masks) == 0:
+    if len(mod_masks) < 3:# or mod_masks[0]:
       cube.clear()
       cloud_masks.clear()
-      logging.info("Not enough moderate cloudy masks found, skipping")
+      # logging.info("Not enough moderate cloudy masks found, skipping")
       continue
 
     # random masking on the last image
@@ -207,30 +210,13 @@ def create_gen_dataset_from_images(image_dir, mask_dir, train):
       cloud_masks.clear()
       continue
 
-    # save the randomly cloudy image for evaluation
-    # gen = Image.fromarray(cube[-1], mode='RGB')
-    # if train:
-    #   gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\train\\' + os.path.basename(r) + '.jpeg')
-    # else:
-    #   gen.save('D:\\Timeseries_cropped_512\\gen_for_eval\\test\\' + os.path.basename(r) + '.jpeg')
-
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
     cube_masks = tf.stack(cloud_masks, axis=2)
 
     yield {'image': files, 'mask': cube_masks}
-    # # print(files)
-    # hypercube.append(files)  # list of (N) selected tensors with size (256,256,T*3)
-    # masks_hcube.append(cube_masks)
-    # # print(hypercube)
     cube.clear()
     cloud_masks.clear()
-    
-    # # print(mod_masks)
-    # mod_masks.clear()
-  
-  #print(len(hypercube))
-  # dataset = tf.data.Dataset.from_tensor_slices({'image': (hypercube), 'mask': (masks_hcube)})
-  # return dataset
+    mod_masks.clear()
 
 
 def get_imagenet(subset, read_config):
@@ -292,7 +278,7 @@ def get_dataset(name,
   elif name == 'custom':
     assert data_dir is not None
     ds = tf.data.Dataset.from_generator(
-              lambda: create_gen_dataset_from_images(data_dir, mask_dir, train=train),
+              lambda: create_gen_dataset_from_images(data_dir, mask_dir, config, train=train),
               output_signature={'image': tf.TensorSpec(shape=(None,None,config.timeline*3), dtype=tf.uint8),
                                 'mask': tf.TensorSpec(shape=(None,None,config.timeline), dtype=tf.bool)}
           )
@@ -312,7 +298,7 @@ def get_dataset(name,
         method=downsample_method)
     ds = ds.map(downsample_part, num_parallel_calls=100)
 
-  # datasets_utils.save_dataset(ds, config.get('targets_dir'), train)
+  datasets_utils.save_dataset(ds, config.get('targets_dir'), train)
   
   if train:
     ds = ds.repeat(num_epochs)
