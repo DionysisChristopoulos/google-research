@@ -183,8 +183,8 @@ class ColTranCore(tf.keras.Model):
       inputs_slice = inputs_dict['targets']
 
     return self(inputs=inputs, inputs_slice=inputs_slice, channel_index=channel_index)
-
-  def sample(self, gray_cond, mode='argmax'):
+  
+  def sample(self, gray_cond, mode='argmax', only_parallel=False):
     output = {}
 
     z_gray = self.encoder(gray_cond[:, :, :, 3:], training=False)  #FIXME: inputs without the ground-truth image
@@ -194,6 +194,8 @@ class ColTranCore(tf.keras.Model):
       # parallel_image = self.post_process_image(parallel_image)
 
       output['parallel'] = parallel_image
+      if only_parallel:
+        return output
     
     ch_context = z_gray
     images = []

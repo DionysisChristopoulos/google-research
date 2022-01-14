@@ -30,7 +30,7 @@ def get_config():
   config.timeline = 6
   config.mask_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/masks_final_testset'
   config.data_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/videos_final_testset'
-  config.targets_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/targets/colorizer'
+  config.targets_dir = '/mnt/data4/makis/Datasets/Clouds/inpaint_new'
 
   # Training.
   config.batch_size = 1
@@ -65,7 +65,8 @@ def get_config():
   config.model.encoder.num_encoder_layers = 4
   config.model.encoder.num_temp_layers = 2
   config.model.encoder.dropout = 0.0
-  config.model.encoder.aggregation = 'attention'
+  config.model.encoder.posemb = 'learnable'
+  config.model.encoder.aggregation = 'conv'
 
   # decoder
   config.model.decoder = ConfigDict()
@@ -99,8 +100,9 @@ def get_config():
   config.sample.batch_size = 1
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 10
+  config.sample.num_outputs = 72
   config.sample.skip_batches = 0
   config.sample.gen_file = 'colorizer64_samples50_15ksteps_testset0_4'
+  config.sample.only_parallel = False
   return config
 

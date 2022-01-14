@@ -196,7 +196,8 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
         output = model.sample(gray_cond=curr_gray, inputs=low_res,
                               mode=sample_mode)
       else:
-        output = model.sample(gray_cond=curr_gray, mode=sample_mode)
+        output = model.sample(gray_cond=curr_gray, mode=sample_mode, 
+                                  only_parallel=config.sample.only_parallel)
       logging.info('Done sampling')
 
       #current = curr_gray[:, :, :, :3]
@@ -219,7 +220,8 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
     cube = tf.transpose(cube, [3,1,2,4,0])
     sample_key = None
     for out_key, out_val in output.items():
-      if ('sample' in out_key or 'argmax' in out_key):
+      if ('sample' in out_key or 'argmax' in out_key) or \
+              (config.sample.only_parallel and 'parallel' in out_key):
         sample_key = out_key
         output_samples = np.concatenate(curr_output[sample_key], axis=0).astype(np.uint8)
         break
@@ -239,13 +241,13 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
               np.average(mse_vals[output_ind, :]), np.std(mse_vals[output_ind, :]))
 
         with writer_smr.as_default():          
-          tf.summary.scalar('PSNR', np.average(psnr_vals[output_ind, :]), step=output_ind)
-          tf.summary.scalar('SSIM', np.average(ssim_vals[output_ind, :]), step=output_ind)
-          tf.summary.scalar('MSE', np.average(mse_vals[output_ind, :]), step=output_ind)
-          tf.summary.image('GT', current[local_ind:local_ind+1,...], step=output_ind)
-          tf.summary.image('Input', cube[::-1,:,:,:,local_ind], step=output_ind, 
+          tf.summary.scalar('PSNR'+sample_key, np.average(psnr_vals[output_ind, :]), step=output_ind)
+          tf.summary.scalar('SSIM'+sample_key, np.average(ssim_vals[output_ind, :]), step=output_ind)
+          tf.summary.scalar('MSE'+sample_key, np.average(mse_vals[output_ind, :]), step=output_ind)
+          tf.summary.image('GT'+sample_key, current[local_ind:local_ind+1,...], step=output_ind)
+          tf.summary.image('Input'+sample_key, cube[::-1,:,:,:,local_ind], step=output_ind, 
                             max_outputs=1)
-          tf.summary.image('Samples', output_samples[local_ind::batch_size,...], step=output_ind)
+          tf.summary.image('Samples'+sample_key, output_samples[local_ind::batch_size,...], step=output_ind)
 
     # concatenate samples across width.
     for out_key, out_val in curr_output.items():
