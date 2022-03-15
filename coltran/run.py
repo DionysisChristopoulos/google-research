@@ -287,6 +287,8 @@ def train(logdir):
       logging.info('Saved checkpoint to %s', checkpoint_name)
       start_time = time.time()
 
+  checkpoint_name = checkpoint.save()
+  logging.info('Saved checkpoint to %s', checkpoint_name)
 
 ###############################################################################
 ## Evaluating.

@@ -26,11 +26,12 @@ def get_config():
   config.downsample = True
   config.random_channel = False
   config.downsample_res = 64
-  config.resolution = [256, 256]
-  config.timeline = 6
-  config.mask_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/masks_final_testset'
-  config.data_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/videos_final_testset'
-  config.targets_dir = '/mnt/data4/makis/Datasets/Clouds/inpaint_new'
+  config.resolution = [128, 128]
+  config.timeline = 4
+  config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_testset'
+  config.data_dir = 'D:\\Datasets\\STGAN_DS\\testset'
+  config.targets_dir = 'D:\\Datasets\\STGAN_DS\\targets'
+  config.mask_availability = False
 
   # Training.
   config.batch_size = 1
@@ -100,9 +101,9 @@ def get_config():
   config.sample.batch_size = 1
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 72
+  config.sample.num_outputs = 50
   config.sample.skip_batches = 0
-  config.sample.gen_file = 'colorizer64_samples50_15ksteps_testset0_4'
-  config.sample.only_parallel = False
+  config.sample.gen_file = '50samples_stgan_ds_v2'
+  config.sample.only_parallel = True
   return config
 

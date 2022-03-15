@@ -26,11 +26,12 @@ def get_config():
   config.downsample = True
   config.random_channel = True
   config.downsample_res = 64
-  config.resolution = [256, 256]
-  config.timeline = 6
-  config.mask_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/masks_final_trainset'
-  config.data_dir = '/mnt/data4/makis/Datasets/Clouds/Timeseries_cropped_512/videos_final_trainset'
-  config.targets_dir = '/mnt/data4/makis/Datasets/Clouds/inpaint_new'
+  config.resolution = [128, 128]
+  config.timeline = 4
+  config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_trainset'
+  config.data_dir = 'D:\\Datasets\\STGAN_DS\\trainset'
+  config.targets_dir = 'D:\\Datasets\\STGAN_DS\\targets'
+  config.mask_availability = False
 
   # Training.
   config.batch_size = 1

@@ -115,6 +115,37 @@ def get_gen_dataset(data_dir, batch_size):
   return tf_dataset
 
 
+def create_gen_dataset_from_images_unmasked(image_dir, config):
+  """Creates a dataset from the provided directory."""
+
+  def load_image(path):
+    image_str = tf.io.read_file(path)
+    return tf.image.decode_image(image_str, channels=3)
+
+  files = []
+  cube = []
+
+  for r in sorted(glob.glob(image_dir + "/**")):
+    for ind, im in enumerate(sorted(glob.glob(r + "/**"))):
+
+      # create the cube with the (T-4, ..., T-1) images unmasked
+      if 0 <= ind < 3:  # FIXME: Hard-coded indexes
+        cloudy_im = load_image(im)
+        cube.append(cloudy_im)  # encoder's input
+
+      # add the clear image to the cube
+      elif ind == 3:  # FIXME: Hard-coded indexes
+        last_clear = load_image(im)
+        cube.insert(0, last_clear)  # decoder's input
+
+    files = tf.concat(cube, axis=2)  # creates tensors with size (res, res, T*3)
+    empty_masks = tf.ones([cloudy_im.shape[0], cloudy_im.shape[1], config.get("timeline")])
+    cube_masks = empty_masks == 1
+
+    yield {'image': files, 'mask': cube_masks}
+    cube.clear()
+
+
 def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
   """Creates a dataset from the provided directory."""
   def load_image(path):
@@ -277,16 +308,24 @@ def get_dataset(name,
     ds = get_imagenet(subset, read_config)
   elif name == 'custom':
     assert data_dir is not None
-    ds = tf.data.Dataset.from_generator(
+    if config.get('mask_availability'):
+      ds = tf.data.Dataset.from_generator(
               lambda: create_gen_dataset_from_images(data_dir, mask_dir, config, train=train),
               output_signature={'image': tf.TensorSpec(shape=(None,None,config.timeline*3), dtype=tf.uint8),
                                 'mask': tf.TensorSpec(shape=(None,None,config.timeline), dtype=tf.bool)}
-          )
+              )
+    else:
+      ds = tf.data.Dataset.from_generator(
+          lambda: create_gen_dataset_from_images_unmasked(data_dir, config),
+          output_signature={'image': tf.TensorSpec(shape=(None, None, config.timeline * 3), dtype=tf.uint8),
+                            'mask': tf.TensorSpec(shape=(None,None,config.timeline), dtype=tf.bool)}
+      )
+
   else:
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 
   ds = ds.map(
-      lambda x: preprocess(x, train=train), num_parallel_calls=100)
+      lambda x: preprocess(x, train=train, resolution=256), num_parallel_calls=100)
   if train and random_channel:
     ds = ds.map(datasets_utils.random_channel_slice)
   if downsample:
