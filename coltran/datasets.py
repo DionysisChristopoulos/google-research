@@ -154,6 +154,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
 
   def categorize_mask(mask):
     mask = cv2.imread(mask, 0)
+    mask = 255 - mask
     six = (mask.shape[0]-config.resolution[0])//2
     eix = (mask.shape[0]+config.resolution[0])//2
     siy = (mask.shape[1]-config.resolution[1])//2
@@ -181,10 +182,12 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
       if category == 'moderate':
         mod_masks.append(mask)
 
+      index = int(os.path.basename(im)[-6:-4])
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
-      if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
+      if 11 <= index < 15:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
+        curr_mask = 255 - curr_mask
         cloud_masks.append(curr_mask == 0)
         # im_mask[curr_mask > 0] = 0
         # im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
@@ -192,9 +195,11 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
         cube.append(im_mask)  # encoder's input
 
       # add the last image to the cube list 2 times, with a random moderate mask + as is
-      elif ind[0] == 55:  # FIXME: Hard-coded indexes
+      elif index == 15:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
-        curr_mask = cv2.imread(mask, 0)
+        last_mask = mask
+        curr_mask = cv2.imread(last_mask, 0)
+        curr_mask = 255 - curr_mask
         cloud_masks.append(curr_mask == 0)
         # mask the last image with its own mask for further masking later
         # im_mask[curr_mask > 0] = 0
@@ -210,6 +215,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     if len(mod_masks) < 3:# or mod_masks[0]:
       cube.clear()
       cloud_masks.clear()
+      # mod_masks.clear()
       # logging.info("Not enough moderate cloudy masks found, skipping")
       continue
 
@@ -218,6 +224,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
       curr_mask = cv2.imread(random.choice(mod_masks), 0)
     else:
       curr_mask = cv2.imread(mod_masks[0], 0)
+    curr_mask = 255 - curr_mask
     cloud_masks[-1] *= curr_mask == 0
     # im_mask[curr_mask > 0] = 0
     # im_mask[curr_mask == 0] = im_mask[curr_mask == 0]
@@ -228,17 +235,19 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     if train:
       for i in range(len(cube) - 1):
         curr_mask = cv2.imread(random.choice(mod_masks), 0)
+        curr_mask = 255 - curr_mask
         cloud_masks[i+1] *= curr_mask == 0
         img = cube[i+1]
         # img[curr_mask > 0] = 0
         # img[curr_mask == 0] = img[curr_mask == 0]
         cube[i + 1] = img
-    
+
     # if the last image is not clear skip the area
-    last_category = categorize_mask(mask)
+    last_category = categorize_mask(last_mask)
     if train and last_category != 'clear':
       cube.clear()
       cloud_masks.clear()
+      # mod_masks.clear()
       continue
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
@@ -325,7 +334,7 @@ def get_dataset(name,
     raise ValueError(f'Expected dataset in [imagenet, custom]. Got {name}')
 
   ds = ds.map(
-      lambda x: preprocess(x, train=train, resolution=256), num_parallel_calls=100)
+      lambda x: preprocess(x, train=train, resolution=128), num_parallel_calls=100)
   if train and random_channel:
     ds = ds.map(datasets_utils.random_channel_slice)
   if downsample:
@@ -333,7 +342,7 @@ def get_dataset(name,
         datasets_utils.downsample_and_upsample,
         train=train,
         downsample_res=downsample_res,
-        upsample_res=256,
+        upsample_res=128,
         method=downsample_method)
     ds = ds.map(downsample_part, num_parallel_calls=100)
 
