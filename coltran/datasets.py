@@ -170,17 +170,23 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     return category
 
   mod_masks = []
-  files = []
   cube = []
   cloud_masks = []
+
+  for mmask in sorted(glob.glob(mask_dir + "/*/**")):
+    # create a list with moderately cloudy masks to use later
+    category = categorize_mask(mmask)
+    if category == 'moderate':
+      mod_masks.append(mmask)
+  logging.info(f'Moderate masks found: {len(mod_masks)} ')
 
   for r, m in zip(sorted(glob.glob(image_dir + "/**")), sorted(glob.glob(mask_dir + "/**"))):
     for im, mask, ind in zip(sorted(glob.glob(r + "/**")), sorted(glob.glob(m + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
 
       # create a list with moderately cloudy masks to use later
-      category = categorize_mask(mask)
-      if category == 'moderate':
-        mod_masks.append(mask)
+      # category = categorize_mask(mask)
+      # if category == 'moderate':
+      #   mod_masks.append(mask)
 
       index = int(os.path.basename(im)[-6:-4])
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
@@ -212,18 +218,18 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
         cloud_masks.insert(0, curr_mask == 0)
 
     # if there is no moderate cloudy mask skip the area
-    if len(mod_masks) < 3:# or mod_masks[0]:
-      cube.clear()
-      cloud_masks.clear()
-      # mod_masks.clear()
-      # logging.info("Not enough moderate cloudy masks found, skipping")
-      continue
+    # if len(mod_masks) < 3:# or mod_masks[0]:
+    #   cube.clear()
+    #   cloud_masks.clear()
+    #   # logging.info("Not enough moderate cloudy masks found, skipping")
+    #   continue
 
     # random masking on the last image
     if train:
       curr_mask = cv2.imread(random.choice(mod_masks), 0)
     else:
-      curr_mask = cv2.imread(mod_masks[0], 0)
+      random.seed(int(os.path.basename(r)))
+      curr_mask = cv2.imread(random.choice(mod_masks), 0)
     curr_mask = 255 - curr_mask
     cloud_masks[-1] *= curr_mask == 0
     # im_mask[curr_mask > 0] = 0
@@ -247,7 +253,6 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     if train and last_category != 'clear':
       cube.clear()
       cloud_masks.clear()
-      # mod_masks.clear()
       continue
 
     files = tf.concat(cube, axis=2)  # creates tensors with size (256,256,T*3)
@@ -256,7 +261,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     yield {'image': files, 'mask': cube_masks}
     cube.clear()
     cloud_masks.clear()
-    mod_masks.clear()
+    # mod_masks.clear()
 
 
 def get_imagenet(subset, read_config):
