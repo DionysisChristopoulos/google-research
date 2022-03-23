@@ -165,12 +165,12 @@ def build(config, batch_size, is_train=False):
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
     zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.ColorUpsampler(config.model)
-    model(zero, inputs_slice=zero_slice, training=is_train)
+    model(zero, inputs_slice=zero_slice, channel_index=0, training=is_train)
   elif config.model.name == 'spatial_upsampler':
     zero_slice = tf.zeros((batch_size, h, w, c), dtype=tf.int32)
     zero = tf.zeros((batch_size, h, w, 3*config.get('timeline', 6)), dtype=tf.int32)
     model = upsampler.SpatialUpsampler(config.model)
-    model(zero, inputs_slice=zero_slice, training=is_train)
+    model(zero, inputs_slice=zero_slice, channel_index=0, training=is_train)
 
   ema_vars = model.trainable_variables
   ema = train_utils.build_ema(config, ema_vars)

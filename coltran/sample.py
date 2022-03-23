@@ -158,6 +158,7 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
   mse_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
+    batch_ind = batch_ind + config.sample.skip_batches*batch_size
     next_data = data.next()
     labels = tf.zeros((batch_size,), dtype=tf.int32).numpy()
     #labels = next_data['label'].numpy()
@@ -221,7 +222,7 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
     sample_key = None
     for out_key, out_val in output.items():
       if ('sample' in out_key or 'argmax' in out_key) or \
-              (config.sample.only_parallel and 'parallel' in out_key):
+              ('core' in config.model.name and config.sample.only_parallel and 'parallel' in out_key):
         sample_key = out_key
         output_samples = np.concatenate(curr_output[sample_key], axis=0).astype(np.uint8)
         break

@@ -211,17 +211,24 @@ class SpatialUpsampler(tf.keras.Model):
       logits: size (B, 256, 256, 3, 256) during training or
               size (B, 256, 256, 1, 256) during evaluation or sampling.
     """
+    if channel_index is not None:
+      up_input = inputs_slice[..., :1]
+    else:
+      up_input = inputs_slice[..., :3]
     grayscale = inputs[:, :, :, 3:]  # FIXME: hard-coded indexing
-    logits = self.upsampler(inputs_slice, grayscale, training=training,
+    # grayscale_nan = tf.where(grayscale==0, float('nan'), tf.cast(grayscale, dtype=tf.float32))
+    # grayscale_nanmean = tf.expand_dims((tf.experimental.numpy.nanmean(grayscale_nan, axis=-1)), axis=-1)
+    # grayscale = tf.cast(tf.round(grayscale_nanmean), dtype=tf.int32)
+    logits = self.upsampler(up_input, grayscale, training=training,
                             channel_index=channel_index)
     return logits, {}
 
   def upsampler(self, inputs, grayscale, channel_index=None, training=True):
-    num_channels = inputs.shape[-1]
+    batch, height, width, num_channels = inputs.shape
     logits = []
 
     grayscale = tf.one_hot(grayscale, depth=self.num_symbols)  # (B, 256, 256, 15, 256)
-    grayscale = tf.reshape(grayscale, [1, 256, 256, 1, -1])  # (B, 256, 256, 1, 15*256)
+    grayscale = tf.reshape(grayscale, [batch, height, width, 1, -1])  # (B, 256, 256, 1, 15*256)
     gray_embed = self.gray_embedding(grayscale)  # (B, 256, 256, 1, hs)
     gray_embed = tf.squeeze(gray_embed, axis=-2)  # (B, 256, 256, hs)
 
@@ -282,6 +289,9 @@ class SpatialUpsampler(tf.keras.Model):
       labels = targets['targets_slice']
     else:
       labels = targets['targets']
+
+    c = 1 if training else 3
+    labels = labels[:, :, :, :c]
 
     height, width, num_channels = labels.shape[1:]
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
