@@ -181,8 +181,9 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
       if category == 'moderate':
         mod_masks.append(mask)
 
+      clean_index = 55
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
-      if 51 <= ind[0] < 55:  # FIXME: Hard-coded indexes
+      if clean_index-config.timeline+2 <= ind[0] < clean_index:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         cloud_masks.append(curr_mask == 0)
@@ -192,7 +193,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
         cube.append(im_mask)  # encoder's input
 
       # add the last image to the cube list 2 times, with a random moderate mask + as is
-      elif ind[0] == 55:  # FIXME: Hard-coded indexes
+      elif ind[0] == clean_index:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         cloud_masks.append(curr_mask == 0)
@@ -337,7 +338,7 @@ def get_dataset(name,
         method=downsample_method)
     ds = ds.map(downsample_part, num_parallel_calls=100)
 
-  datasets_utils.save_dataset(ds, config.get('targets_dir'), train)
+  datasets_utils.save_dataset(ds, config.get('targets_dir'), train, config.get('downsample_res'))
   
   if train:
     ds = ds.repeat(num_epochs)

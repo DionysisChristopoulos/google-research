@@ -15,7 +15,10 @@
 
 """Test configurations for colorizer."""
 from ml_collections import ConfigDict
+from os import getenv
 
+resolution = int(getenv("DOWNSAMPLE_SIZE", 64))
+model_size = int(getenv("MODEL_SIZE", 128))
 
 def get_config():
   """Experiment configuration."""
@@ -25,13 +28,13 @@ def get_config():
   config.dataset = 'custom'
   config.downsample = True
   config.random_channel = True
-  config.downsample_res = 64
-  config.resolution = [128, 128]
-  config.timeline = 4
-  config.mask_dir = 'D:\\Datasets\\MASKS\\masks_final_trainset'
-  config.data_dir = 'D:\\Datasets\\STGAN_DS\\trainset'
-  config.targets_dir = 'D:\\Datasets\\STGAN_DS\\targets'
-  config.mask_availability = False
+  config.downsample_res = resolution
+  config.resolution = [256, 256]
+  config.timeline = 6
+  config.mask_dir = './Datasets/Timeseries_cropped_512/masks_final_trainset'
+  config.data_dir = './Datasets/Timeseries_cropped_512/videos_final_trainset'
+  config.targets_dir = './Datasets/inpaint_new'
+  config.mask_availability = True
 
   # Training.
   config.batch_size = 1
@@ -51,17 +54,18 @@ def get_config():
   config.optimizer.type = 'rmsprop'
   config.optimizer.learning_rate = 3e-4
 
+  print("Model size: {}".format(model_size))
   # Model.
   config.model = ConfigDict()
-  config.model.hidden_size = 64
+  config.model.hidden_size = model_size
   config.model.stage = 'encoder_decoder'
-  config.model.resolution = [64, 64]
+  config.model.resolution = [resolution, resolution]
   config.model.name = 'coltran_core'
 
   # encoder
   config.model.encoder = ConfigDict()
-  config.model.encoder.ff_size = 64
-  config.model.encoder.hidden_size = 64
+  config.model.encoder.ff_size = model_size
+  config.model.encoder.hidden_size = model_size
   config.model.encoder.num_heads = 4
   config.model.encoder.num_encoder_layers = 4
   config.model.encoder.num_temp_layers = 2
@@ -71,9 +75,9 @@ def get_config():
 
   # decoder
   config.model.decoder = ConfigDict()
-  config.model.decoder.ff_size = 64
-  config.model.decoder.hidden_size = 64
-  config.model.decoder.resolution = [64, 64]
+  config.model.decoder.ff_size = model_size
+  config.model.decoder.hidden_size = model_size
+  config.model.decoder.resolution = [resolution, resolution]
   config.model.decoder.num_heads = 4
   config.model.decoder.num_inner_layers = 2
   config.model.decoder.num_outer_layers = 2

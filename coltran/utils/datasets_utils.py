@@ -69,10 +69,11 @@ def random_channel_slice(x):
   x['channel_index'] = random_channel
   return x
 
-def save_dataset(ds, target_path, train):
+def save_dataset(ds, target_path, train, downsample_res=64):
   
   # save each clear and random cloudy image in target path for evaluation
   # target_path = config.get('targets_dir')
+  target_path = target_path+f"_{downsample_res}"
   if not os.path.exists(target_path):
     os.makedirs(target_path)
   
@@ -94,8 +95,8 @@ def save_dataset(ds, target_path, train):
       os.makedirs(eldirmask, exist_ok=True)
     
     for i in range(1, n_im):
-      image = element['image_64'][:, :, i*3:(i+1)*3].astype('uint8')
-      mask = element['mask_64'][:, :, i].astype('uint8')*255
+      image = element[f'image_{downsample_res}'][:, :, i*3:(i+1)*3].astype('uint8')
+      mask = element[f'mask_{downsample_res}'][:, :, i].astype('uint8')*255
 
       final_im = Image.fromarray(image, mode='RGB')
       final_mask = Image.fromarray(mask, mode='L')
