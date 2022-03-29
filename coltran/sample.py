@@ -26,6 +26,7 @@ from absl import flags
 from absl import logging
 from ml_collections import config_flags
 import numpy as np
+from PIL import Image, ImageEnhance
 
 import tensorflow.compat.v2 as tf
 from werkzeug.debug import console
@@ -36,6 +37,8 @@ from coltran.models import upsampler
 from coltran.utils import base_utils
 from coltran.utils import datasets_utils
 from coltran.utils import train_utils
+
+from matplotlib import cm
 
 # pylint: disable=g-direct-tensorflow-import
 
@@ -124,6 +127,8 @@ def get_grayscale_at_sample_time(data, downsample_res, model_name):
 def create_sample_dir(logdir, config):
   """Creates child directory to write samples based on step name."""
   sample_dir = config.sample.get('log_dir')
+  if config.sample.only_parallel:
+    sample_dir += "_parallel"
   assert sample_dir is not None
   sample_dir = os.path.join(logdir, sample_dir)
   tf.io.gfile.makedirs(sample_dir)
@@ -131,6 +136,18 @@ def create_sample_dir(logdir, config):
   return sample_dir
 
 def store_samples(data, config, logdir, subset, gen_dataset=None):
+  def nearest_upsample(x, factor=1):
+    if factor > 1:
+      x = x.repeat(factor, axis=0).repeat(factor, axis=1)
+    return x
+
+  def im_after_proc(x, mode, upsample_factor=4, brightness_factor=1.5, contrast_factor=0.8): 
+      im = Image.fromarray(nearest_upsample(x, upsample_factor), mode=mode)
+      if mode == 'RGB':
+        im = ImageEnhance.Brightness(im).enhance(brightness_factor)
+        im = ImageEnhance.Contrast(im).enhance(contrast_factor)
+      return im
+
   """Stores the generated samples."""
   downsample_res = config.get('downsample_res', 64)
   num_samples = config.sample.num_samples
@@ -138,6 +155,11 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
   batch_size = config.sample.get('batch_size', 1)
   sample_mode = config.sample.get('mode', 'argmax')
   gen_file = config.sample.get('gen_file', 'gen')
+  cmap_name = config.sample.get('cmap', 'inferno')
+  up_factor = config.sample.get('upsample_factor', 4)
+
+  colmap = cm.get_cmap(cmap_name)(np.linspace(0, 1, config.timeline))
+  colmapint = np.round(colmap[...,:3]*255.).flatten().astype(np.uint8)
 
   model, optimizer, ema = build(config, 1, False)
   checkpoints = train_utils.create_checkpoint(model, optimizer, ema)
@@ -250,12 +272,29 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
                             max_outputs=1)
           tf.summary.image('Samples'+sample_key, output_samples[local_ind::batch_size,...], step=output_ind)
 
+        if config.sample.im_outputs:          
+          unmasked = next_data[f'image_{downsample_res}'][local_ind,...,:3].numpy()
+          unmasked_im = im_after_proc(unmasked.astype(np.uint8), mode='RGB')
+          gt_im = im_after_proc(nearest_upsample(current[local_ind,...].numpy(), up_factor), 
+          mode='RGB')
+          target_im = im_after_proc(cube[-1,:,:,:,local_ind].numpy(), mode='RGB')
+          sample_im = im_after_proc(output_samples[local_ind,...], mode='RGB')
+          cover_mask = np.sum(next_data[f'mask_{downsample_res}'][local_ind,...,1:], axis=2) #np.sum(np.any(cube[::-1,:,:,:,local_ind]!=0, axis=3),axis=0)
+          cover_mask_im = im_after_proc(cover_mask.astype(np.uint8), mode='P')
+          cover_mask_im.putpalette(colmapint)
+          unmasked_im.save(os.path.join(sample_dir, f'{output_ind:05d}_unm.png'))
+          gt_im.save(os.path.join(sample_dir, f'{output_ind:05d}_gt.png'))
+          target_im.save(os.path.join(sample_dir, f'{output_ind:05d}_tar.png'))
+          sample_im.save(os.path.join(sample_dir, f'{output_ind:05d}_sam.png'))
+          cover_mask_im.save(os.path.join(sample_dir, f'{output_ind:05d}_cov.png'))  
+
     # concatenate samples across width.
     for out_key, out_val in curr_output.items():
       curr_out_val = np.concatenate(out_val, axis=2)
       curr_output[out_key] = curr_out_val
 
-      if ('sample' in out_key or 'argmax' in out_key):
+      if ('sample' in out_key or 'argmax' in out_key) or \
+              ('core' in config.model.name and config.sample.only_parallel and 'parallel' in out_key):
         save_str = f'Saving {(batch_ind + 1) * batch_size} samples'
         logging.info(save_str)
         for single_ex, label in zip(curr_out_val, labels):
