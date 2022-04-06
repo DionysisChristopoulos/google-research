@@ -127,7 +127,8 @@ def get_grayscale_at_sample_time(data, downsample_res, model_name):
 def create_sample_dir(logdir, config):
   """Creates child directory to write samples based on step name."""
   sample_dir = config.sample.get('log_dir')
-  if config.sample.only_parallel:
+  only_parallel = config.sample.get('only_parallel', False)
+  if only_parallel:
     sample_dir += "_parallel"
   assert sample_dir is not None
   sample_dir = os.path.join(logdir, sample_dir)
@@ -150,13 +151,15 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
 
   """Stores the generated samples."""
   downsample_res = config.get('downsample_res', 64)
+  resolution = config.get('resolution', [256])[0]
   num_samples = config.sample.num_samples
   num_outputs = config.sample.num_outputs
   batch_size = config.sample.get('batch_size', 1)
   sample_mode = config.sample.get('mode', 'argmax')
   gen_file = config.sample.get('gen_file', 'gen')
   cmap_name = config.sample.get('cmap', 'inferno')
-  up_factor = config.sample.get('upsample_factor', 4)
+  up_factor = config.sample.get('upsample_factor', 1)
+  up_factor = config.sample.get('im_outputs', False)
 
   colmap = cm.get_cmap(cmap_name)(np.linspace(0, 1, config.timeline))
   colmapint = np.round(colmap[...,:3]*255.).flatten().astype(np.uint8)
@@ -174,10 +177,10 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
   sample_summary_dir = os.path.join(
       logdir, 'sample_{}'.format(subset))
   writer_smr = tf.summary.create_file_writer(sample_summary_dir)
-
-  psnr_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
-  ssim_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
-  mse_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
+  if subset != 'test':
+    psnr_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
+    ssim_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
+    mse_vals = np.ones((num_outputs//batch_size*batch_size, num_samples))*np.nan
   logging.info(gen_dataset)
   for batch_ind in range(num_outputs // batch_size):
     batch_ind = batch_ind + config.sample.skip_batches*batch_size
@@ -212,7 +215,7 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
         if gen_dataset is not None:
           # Provide low resolution generated image.
           low_res = next_gen_data['targets']
-          low_res = datasets_utils.change_resolution(low_res, 256)
+          low_res = datasets_utils.change_resolution(low_res, resolution)
         else:
           # Provide low resolution ground truth image.
           low_res = next_data['targets_%d_up_back' % downsample_res]
@@ -251,42 +254,53 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
     if sample_key:
       for local_ind in range(batch_size):
         output_ind = batch_ind*batch_size + local_ind
-        gen_im = output_samples[local_ind::batch_size,...]
-        ref_im = current_comp[local_ind,...]
-        psnr_vals[output_ind, :] = tf.image.psnr(output_samples[local_ind::batch_size,...], 
-                                                  ref_im, 255)
-        ssim_vals[output_ind, :] = tf.image.ssim(output_samples[local_ind::batch_size,...], 
-                                                  ref_im, 255)
-        mse_vals[output_ind, :] = tf.reduce_mean(tf.metrics.mse(tf.cast(gen_im, tf.float32), tf.cast(ref_im, tf.float32)))
-        logging.info("Output %d, PSNR: %.4f/%.4f, SSIM: %.4f/%.4f, MSE: %.4f/%.4f", output_ind,
-              np.average(psnr_vals[output_ind, :]), np.std(psnr_vals[output_ind, :]),
-              np.average(ssim_vals[output_ind, :]), np.std(ssim_vals[output_ind, :]),
-              np.average(mse_vals[output_ind, :]), np.std(mse_vals[output_ind, :]))
+        if subset != 'test':
+          gen_im = output_samples[local_ind::batch_size,...]
+          ref_im = current_comp[local_ind,...]
+          psnr_vals[output_ind, :] = tf.image.psnr(output_samples[local_ind::batch_size,...], 
+                                                    ref_im, 255)
+          ssim_vals[output_ind, :] = tf.image.ssim(output_samples[local_ind::batch_size,...], 
+                                                    ref_im, 255)
+          mse_vals[output_ind, :] = tf.reduce_mean(tf.metrics.mse(tf.cast(gen_im, tf.float32), tf.cast(ref_im, tf.float32)))
+          logging.info("Output %d, PSNR: %.4f/%.4f, SSIM: %.4f/%.4f, MSE: %.4f/%.4f", output_ind,
+                np.average(psnr_vals[output_ind, :]), np.std(psnr_vals[output_ind, :]),
+                np.average(ssim_vals[output_ind, :]), np.std(ssim_vals[output_ind, :]),
+                np.average(mse_vals[output_ind, :]), np.std(mse_vals[output_ind, :]))
 
-        with writer_smr.as_default():          
-          tf.summary.scalar('PSNR'+sample_key, np.average(psnr_vals[output_ind, :]), step=output_ind)
-          tf.summary.scalar('SSIM'+sample_key, np.average(ssim_vals[output_ind, :]), step=output_ind)
-          tf.summary.scalar('MSE'+sample_key, np.average(mse_vals[output_ind, :]), step=output_ind)
+        with writer_smr.as_default():     
+          if subset != 'test':     
+            tf.summary.scalar('PSNR'+sample_key, np.average(psnr_vals[output_ind, :]), step=output_ind)
+            tf.summary.scalar('SSIM'+sample_key, np.average(ssim_vals[output_ind, :]), step=output_ind)
+            tf.summary.scalar('MSE'+sample_key, np.average(mse_vals[output_ind, :]), step=output_ind)
           tf.summary.image('GT'+sample_key, current[local_ind:local_ind+1,...], step=output_ind)
           tf.summary.image('Input'+sample_key, cube[::-1,:,:,:,local_ind], step=output_ind, 
                             max_outputs=1)
           tf.summary.image('Samples'+sample_key, output_samples[local_ind::batch_size,...], step=output_ind)
 
-        if config.sample.im_outputs:          
-          unmasked = next_data[f'image_{downsample_res}'][local_ind,...,:3].numpy()
+        if config.sample.im_outputs: 
+          suff = ''
+          sam_str = 'sam'
+          if 'spatial_upsampler' in config.model.name:
+            suff = '_up'  
+            unmasked = next_data[f'image'][local_ind,...,:3].numpy()
+            cover_mask = np.sum(next_data[f'mask'][local_ind,...,1:], axis=2)
+          else:
+            unmasked = next_data[f'image_{downsample_res}'][local_ind,...,:3].numpy()
+            cover_mask = np.sum(next_data[f'mask_{downsample_res}'][local_ind,...,1:], axis=2)
+            if not config.sample.only_parallel:
+              sam_str = 'gen'
           unmasked_im = im_after_proc(unmasked.astype(np.uint8), mode='RGB')
           gt_im = im_after_proc(nearest_upsample(current[local_ind,...].numpy(), up_factor), 
           mode='RGB')
           target_im = im_after_proc(cube[-1,:,:,:,local_ind].numpy(), mode='RGB')
           sample_im = im_after_proc(output_samples[local_ind,...], mode='RGB')
-          cover_mask = np.sum(next_data[f'mask_{downsample_res}'][local_ind,...,1:], axis=2) #np.sum(np.any(cube[::-1,:,:,:,local_ind]!=0, axis=3),axis=0)
           cover_mask_im = im_after_proc(cover_mask.astype(np.uint8), mode='P')
           cover_mask_im.putpalette(colmapint)
-          unmasked_im.save(os.path.join(sample_dir, f'{output_ind:05d}_unm.png'))
-          gt_im.save(os.path.join(sample_dir, f'{output_ind:05d}_gt.png'))
-          target_im.save(os.path.join(sample_dir, f'{output_ind:05d}_tar.png'))
-          sample_im.save(os.path.join(sample_dir, f'{output_ind:05d}_sam.png'))
-          cover_mask_im.save(os.path.join(sample_dir, f'{output_ind:05d}_cov.png'))  
+          unmasked_im.save(os.path.join(sample_dir, f'{output_ind:05d}_unm{suff}.png'))
+          gt_im.save(os.path.join(sample_dir, f'{output_ind:05d}_gt{suff}.png'))
+          target_im.save(os.path.join(sample_dir, f'{output_ind:05d}_tar{suff}.png'))
+          sample_im.save(os.path.join(sample_dir, f'{output_ind:05d}_{sam_str}{suff}.png'))
+          cover_mask_im.save(os.path.join(sample_dir, f'{output_ind:05d}_cov{suff}.png'))  
 
     # concatenate samples across width.
     for out_key, out_val in curr_output.items():
@@ -300,12 +314,13 @@ def store_samples(data, config, logdir, subset, gen_dataset=None):
         for single_ex, label in zip(curr_out_val, labels):
           serialized = array_to_tf_example(single_ex, label)
           writer.write(serialized)
-
-  std_mean = lambda arr: np.sqrt(np.sum(np.var(arr, axis=1)))/arr.shape[0]
-  logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f, Average MSE: %.4f/%.4f", 
-                np.average(psnr_vals), std_mean(psnr_vals),
-                np.average(ssim_vals), std_mean(ssim_vals),
-                np.average(mse_vals), std_mean(mse_vals))
+  
+  if subset != 'test':
+    std_mean = lambda arr: np.sqrt(np.sum(np.var(arr, axis=1)))/arr.shape[0]
+    logging.info("Average PSNR: %.4f/%.4f, Average SSIM: %.4f/%.4f, Average MSE: %.4f/%.4f", 
+                  np.average(psnr_vals), std_mean(psnr_vals),
+                  np.average(ssim_vals), std_mean(ssim_vals),
+                  np.average(mse_vals), std_mean(mse_vals))
   writer.close()
 
 

@@ -30,10 +30,12 @@ def get_config():
   config.random_channel = False
   config.downsample_res = resolution
   config.resolution = [256, 256]
+  # config.max_coverage = 50
   config.timeline = 6
+  config.ref_index = 55 # TEST: 30
   config.mask_dir = './Datasets/Timeseries_cropped_512/masks_final_testset'
   config.data_dir = './Datasets/Timeseries_cropped_512/videos_final_testset'
-  config.targets_dir = './Datasets/inpaint_new'
+  config.targets_dir = './Datasets/inpaint_out'
   config.mask_availability = True
 
   # Training.
@@ -42,8 +44,8 @@ def get_config():
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
-  config.eval_num_examples = 20000
-  config.eval_batch_size = 1
+  config.eval_num_examples = 100
+  config.eval_batch_size = 16
   config.eval_checkpoint_wait_secs = -1
 
   # loss hparams.
@@ -102,12 +104,14 @@ def get_config():
 
   config.sample = ConfigDict()
   config.sample.log_dir = 'samples_core'
-  config.sample.batch_size = 1
+  config.sample.im_outputs = False
+  config.sample.batch_size = 25
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 72
+  config.sample.num_outputs = 100
   config.sample.skip_batches = 0
   config.sample.gen_file = 'gen0'
   config.sample.only_parallel = True
+  config.sample.upsample_factor = 4
   return config
 

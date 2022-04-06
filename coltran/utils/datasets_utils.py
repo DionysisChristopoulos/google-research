@@ -69,7 +69,7 @@ def random_channel_slice(x):
   x['channel_index'] = random_channel
   return x
 
-def save_dataset(ds, target_path, train, downsample_res=64):
+def save_dataset(ds, target_path, subset, downsample_res=64):
   
   # save each clear and random cloudy image in target path for evaluation
   # target_path = config.get('targets_dir')
@@ -77,10 +77,7 @@ def save_dataset(ds, target_path, train, downsample_res=64):
   if not os.path.exists(target_path):
     os.makedirs(target_path)
   
-  if train:
-    save_dir = os.path.join(target_path, 'train')
-  else:
-    save_dir = os.path.join(target_path, 'test')
+  save_dir = os.path.join(target_path, subset)
   image_dir = os.path.join(save_dir, 'image')
   mask_dir = os.path.join(save_dir, 'mask')
   if not os.path.exists(save_dir):

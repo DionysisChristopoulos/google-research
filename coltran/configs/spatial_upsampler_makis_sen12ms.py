@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Test configurations for colorizer."""
+"""Test configurations for color upsampler."""
 from ml_collections import ConfigDict
 from os import getenv
 
@@ -27,15 +27,15 @@ def get_config():
   # Data.
   config.dataset = 'custom'
   config.downsample = True
-  config.random_channel = True
   config.downsample_res = resolution
   config.resolution = [224, 224]
+  config.random_channel = True
   config.timeline = 6
   config.ref_index = 15
   config.max_coverage = 50
   config.mask_dir = './Datasets/TUM/trainsetmasks'
   config.data_dir = './Datasets/TUM/trainsetrgb'
-  config.targets_dir = './Datasets/inpaint_new_sen12'
+  # config.targets_dir = './Datasets/inpaint_new_sen12'
   config.mask_availability = True
   config.flip_masks = True
 
@@ -46,12 +46,8 @@ def get_config():
   config.num_epochs = -1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
-  config.eval_batch_size = 16
+  config.eval_batch_size = 1
   config.eval_checkpoint_wait_secs = -1
-
-  # loss hparams.
-  config.loss_factor = 0.99
-  config.encoder_loss_factor = 0.01
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'rmsprop'
@@ -61,46 +57,10 @@ def get_config():
   # Model.
   config.model = ConfigDict()
   config.model.hidden_size = model_size
-  config.model.stage = 'encoder_decoder'
+  config.model.ff_size = model_size
+  config.model.num_heads = 4
+  config.model.num_encoder_layers = 3
   config.model.resolution = [resolution, resolution]
-  config.model.name = 'coltran_core'
+  config.model.name = 'spatial_upsampler'
 
-  # encoder
-  config.model.encoder = ConfigDict()
-  config.model.encoder.ff_size = model_size
-  config.model.encoder.hidden_size = model_size
-  config.model.encoder.num_heads = 4
-  config.model.encoder.num_encoder_layers = 4
-  config.model.encoder.num_temp_layers = 2
-  config.model.encoder.dropout = 0.0
-  config.model.encoder.posemb = 'learnable'
-  config.model.encoder.aggregation = 'conv'
-
-  # decoder
-  config.model.decoder = ConfigDict()
-  config.model.decoder.ff_size = model_size
-  config.model.decoder.hidden_size = model_size
-  config.model.decoder.resolution = [resolution, resolution]
-  config.model.decoder.num_heads = 4
-  config.model.decoder.num_inner_layers = 2
-  config.model.decoder.num_outer_layers = 2
-  config.model.decoder.dropout = 0.0
-  config.model.decoder.skip = True
-
-  config.model.decoder.cond_mlp = 'affine'
-  config.model.decoder.cond_mlp_act = 'identity'
-
-  config.model.decoder.cond_ln_act = 'identity'
-  config.model.decoder.cond_ln = True
-  config.model.decoder.cond_ln_seq = 'sc'
-  config.model.decoder.cond_ln_sp_ave = 'learnable'
-  config.model.decoder.cond_ln_init = 'glorot_uniform'
-
-  config.model.decoder.cond_att_init = 'glorot_uniform'
-  config.model.decoder.cond_att_v = True
-  config.model.decoder.cond_att_q = True
-  config.model.decoder.cond_att_k = True
-  config.model.decoder.cond_att_scale = True
-  config.model.decoder.cond_att_act = 'identity'
   return config
-

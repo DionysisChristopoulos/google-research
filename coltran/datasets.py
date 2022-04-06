@@ -146,7 +146,7 @@ def create_gen_dataset_from_images_unmasked(image_dir, config):
     cube.clear()
 
 
-def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
+def create_gen_dataset_from_images(image_dir, mask_dir, config, train, subset):
   flip_masks = config.get('flip_masks', False)
   # logging.info(f'Flipping masks')
   """Creates a dataset from the provided directory."""
@@ -155,6 +155,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     return tf.image.decode_image(image_str, channels=3)
 
   def categorize_mask(mask):
+    mod_cover = config.get('max_coverage', 30)
     mask = cv2.imread(mask, 0)
     mask = 255 - mask if flip_masks else mask
     six = (mask.shape[0]-config.resolution[0])//2
@@ -165,36 +166,37 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     coverage = (np.count_nonzero(mask_val) / mask_val.size) * 100.0
     if coverage <= 5.0:
       category = 'clear'
-    elif 5.0 < coverage <= 30.0:
+    elif 5.0 < coverage <= mod_cover:
       category = 'moderate'
-    elif coverage > 30.0:
+    elif coverage > mod_cover:
       category = 'severe'
     return category
+
+  ref_index = config.ref_index
 
   mod_masks = []
   cube = []
   cloud_masks = []
 
-  # for mmask in sorted(glob.glob(mask_dir + "/*/**")):
-  #   # create a list with moderately cloudy masks to use later
-  #   category = categorize_mask(mmask)
-  #   if category == 'moderate':
-  #     mod_masks.append(mmask)
+  for mmask in sorted(glob.glob(mask_dir + "/*/**")):
+    # create a list with moderately cloudy masks to use later
+    category = categorize_mask(mmask)
+    if category == 'moderate':
+      mod_masks.append(mmask)
   # logging.info(f'Moderate masks found: {len(mod_masks)} ')
 
   for r, m in zip(sorted(glob.glob(image_dir + "/**")), sorted(glob.glob(mask_dir + "/**"))):
     for im, mask, ind in zip(sorted(glob.glob(r + "/**")), sorted(glob.glob(m + "/**")), enumerate(sorted(glob.glob(r + "/**")))):
       
-      # create a list with moderately cloudy masks to use later
-      category = categorize_mask(mask)
-      if category == 'moderate':
-        mod_masks.append(mask)
+      # # create a list with moderately cloudy masks to use later
+      # category = categorize_mask(mask)
+      # if category == 'moderate':
+      #   mod_masks.append(mask)
 
-      # index = int(os.path.basename(im)[-6:-4])
-      index = ind[0]
-      clean_index = 55 #55/15 # FIXME: Hard-coded indexes
+      index = int(os.path.basename(im)[-6:-4])
+      # index = ind[0]      
       # create the cube with the (T-4, ..., T-1) images masked with their own masks
-      if clean_index-config.timeline+2 <= index < clean_index:  
+      if ref_index-config.timeline+2 <= index < ref_index:  
         im_mask = cv2.imread(im)
         curr_mask = cv2.imread(mask, 0)
         curr_mask = 255 - curr_mask if flip_masks else curr_mask
@@ -203,7 +205,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
         cube.append(im_mask)  # encoder's input
 
       # add the last image to the cube list 2 times, with a random moderate mask + as is
-      elif index == clean_index:  # FIXME: Hard-coded indexes
+      elif index == ref_index:  # FIXME: Hard-coded indexes
         im_mask = cv2.imread(im)
         last_mask = mask
         curr_mask = cv2.imread(last_mask, 0)
@@ -215,20 +217,20 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
         cube.insert(0, last_clear)
         cloud_masks.insert(0, curr_mask == 0)
 
-    # if there is no moderate cloudy mask skip the area
-    if len(mod_masks) < 3:
-      cube.clear()
-      cloud_masks.clear()
-      # logging.info("Not enough moderate cloudy masks found, skipping")
-      continue
+    # # if there is no moderate cloudy mask skip the area
+    # if (subset == 'train' and len(mod_masks) < 3): #or (subset=='valid' and len(mod_masks)==0):
+    #   cube.clear()
+    #   cloud_masks.clear()
+    #   # logging.info("Not enough moderate cloudy masks found, skipping")
+    #   continue
 
     # random masking on the last image
     if train:
       curr_mask = cv2.imread(random.choice(mod_masks), 0)
-    else:
-      # random.seed(int(os.path.basename(r)))
-      # curr_mask = cv2.imread(random.choice(mod_masks), 0)
-      curr_mask = cv2.imread(mod_masks[0], 0)
+    elif subset=='valid':
+      random.seed(int(os.path.basename(r)))
+      curr_mask = cv2.imread(random.choice(mod_masks), 0)
+      # curr_mask = cv2.imread(mod_masks[0], 0)
     curr_mask = 255 - curr_mask if flip_masks else curr_mask
     cloud_masks[-1] *= curr_mask == 0
     im_mask = cv2.cvtColor(im_mask, cv2.COLOR_BGR2RGB)
@@ -241,12 +243,12 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
         curr_mask = 255 - curr_mask if flip_masks else curr_mask
         cloud_masks[i+1] *= curr_mask == 0
 
-    # sum_masks = np.sum(np.stack(cloud_masks, axis=2)[...,1:], axis=2)
+    sum_masks = np.sum(np.stack(cloud_masks, axis=2)[...,1:], axis=2)
 
     # if the last image is not clear skip the area
     last_category = categorize_mask(last_mask)
-    if (last_category != 'clear'): #or \
-              # (not train and np.any(sum_masks==0)):
+    if (subset != 'test' and last_category != 'clear' or np.any(sum_masks==0)) or \
+              (subset == 'test' and last_category == 'clear' or np.any(sum_masks==0)):
       cube.clear()
       cloud_masks.clear()
       continue
@@ -257,7 +259,7 @@ def create_gen_dataset_from_images(image_dir, mask_dir, config, train):
     yield {'image': files, 'mask': cube_masks}
     cube.clear()
     cloud_masks.clear()
-    mod_masks.clear()
+    # mod_masks.clear()
 
 
 def get_imagenet(subset, read_config):
@@ -312,6 +314,7 @@ def get_dataset(name,
   num_epochs = config.get('num_epochs', -1)
   data_dir = config.get('data_dir') or data_dir
   mask_dir = config.get('mask_dir')
+  target_dir = config.get('targets_dir', '')
   auto = tf.data.AUTOTUNE
   train = subset == 'train'
 
@@ -321,7 +324,7 @@ def get_dataset(name,
     assert data_dir is not None
     if config.get('mask_availability'):
       ds = tf.data.Dataset.from_generator(
-              lambda: create_gen_dataset_from_images(data_dir, mask_dir, config, train=train),
+              lambda: create_gen_dataset_from_images(data_dir, mask_dir, config, train=train, subset=subset),
               output_signature={'image': tf.TensorSpec(shape=(None,None,config.timeline*3), dtype=tf.uint8),
                                 'mask': tf.TensorSpec(shape=(None,None,config.timeline), dtype=tf.bool)}
               )
@@ -348,7 +351,13 @@ def get_dataset(name,
         method=downsample_method)
     ds = ds.map(downsample_part, num_parallel_calls=100)
 
-  datasets_utils.save_dataset(ds, config.get('targets_dir'), train, config.get('downsample_res'))
+  if target_dir:
+    # it = iter(ds)
+    # cnt = 0
+    # for data in it:
+    #   cnt += 1
+    # logging.info(f'Total number: {cnt}')
+    datasets_utils.save_dataset(ds, target_dir, subset, downsample_res)
   
   if train:
     ds = ds.repeat(num_epochs)

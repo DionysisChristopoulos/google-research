@@ -27,15 +27,16 @@ def get_config():
   # Data.
   config.dataset = 'custom'
   config.downsample = True
-  config.random_channel = True
+  config.random_channel = False
   config.downsample_res = resolution
-  config.resolution = [256, 256]
+  config.resolution = [224, 224]
   config.timeline = 6
-  config.ref_index = 55
-  config.mask_dir = './Datasets/Timeseries_cropped_512/masks_final_trainset'
-  config.data_dir = './Datasets/Timeseries_cropped_512/videos_final_trainset'
-  config.targets_dir = './Datasets/inpaint_out'
+  config.ref_index = 15
+  config.mask_dir = './Datasets/TUM/testsetmasks'
+  config.data_dir = './Datasets/TUM/testsetrgb'
+  # config.targets_dir = './Datasets/inpaint_new_sen12'
   config.mask_availability = True
+  config.flip_masks = True
 
   # Training.
   config.batch_size = 1
@@ -44,12 +45,12 @@ def get_config():
   config.num_epochs = -1
   config.polyak_decay = 0.999
   config.eval_num_examples = 20000
-  config.eval_batch_size = 16
+  config.eval_batch_size = 1
   config.eval_checkpoint_wait_secs = -1
 
   # loss hparams.
-  config.loss_factor = 0.01
-  config.encoder_loss_factor = 0.99
+  config.loss_factor = 0.99
+  config.encoder_loss_factor = 0.01
 
   config.optimizer = ConfigDict()
   config.optimizer.type = 'rmsprop'
@@ -100,5 +101,16 @@ def get_config():
   config.model.decoder.cond_att_k = True
   config.model.decoder.cond_att_scale = True
   config.model.decoder.cond_att_act = 'identity'
+
+  config.sample = ConfigDict()
+  config.sample.log_dir = 'samples_core_test'
+  config.sample.im_outputs = True
+  config.sample.batch_size = 19
+  config.sample.mode = 'argmax'
+  config.sample.num_samples = 1
+  config.sample.num_outputs = 532
+  config.sample.skip_batches = 0
+  config.sample.gen_file = 'gen0'
+  config.sample.only_parallel = False
   return config
 

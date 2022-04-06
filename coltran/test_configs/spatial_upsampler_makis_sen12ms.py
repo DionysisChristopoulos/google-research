@@ -18,7 +18,7 @@ from ml_collections import ConfigDict
 from os import getenv
 
 resolution = int(getenv("DOWNSAMPLE_SIZE", 64))
-model_size = int(getenv("MODEL_SIZE", 128))
+model_size = int(getenv("MODEL_SIZE", 512))
 
 def get_config():
   """Experiment configuration."""
@@ -28,23 +28,25 @@ def get_config():
   config.dataset = 'custom'
   config.downsample = True
   config.downsample_res = resolution
-  config.resolution = [256, 256]
+  config.resolution = [224, 224]
   config.random_channel = True
   config.timeline = 6
-  config.ref_index = 55
-  config.mask_dir = './Datasets/Timeseries_cropped_512/masks_final_trainset'
-  config.data_dir = './Datasets/Timeseries_cropped_512/videos_final_trainset'
-  config.targets_dir = './Datasets/inpaint_out_sr'
+  config.ref_index = 15
+  # config.max_coverage = 50
+  config.mask_dir = './Datasets/TUM/testsetmasks'
+  config.data_dir = './Datasets/TUM/testsetrgb'
+  config.targets_dir = './Datasets/inpaint_new_valid_sen12_sup'
   config.mask_availability = True
+  config.flip_masks = True
 
 
   # Training.
   config.batch_size = 1
-  config.max_train_steps = 15000
+  config.max_train_steps = 15000  # 50000
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
-  config.eval_num_examples = 20000
+  config.eval_num_examples = 100
   config.eval_batch_size = 1
   config.eval_checkpoint_wait_secs = -1
 
@@ -61,5 +63,16 @@ def get_config():
   config.model.num_encoder_layers = 3
   config.model.resolution = [resolution, resolution]
   config.model.name = 'spatial_upsampler'
+
+  config.sample = ConfigDict()
+  config.sample.gen_data_dir = './Datasets/Checkpoints/sen12ms_colorizer_128_conv_100K/samples_core'
+  config.sample.log_dir = 'samples_sup_valid_new'
+  config.sample.batch_size = 1
+  config.sample.mode = 'argmax'
+  config.sample.num_samples = 1
+  config.sample.num_outputs = 443
+  config.sample.skip_batches = 0
+  config.sample.gen_file = 'gen0_sup'
+  config.sample.im_outputs = True
 
   return config

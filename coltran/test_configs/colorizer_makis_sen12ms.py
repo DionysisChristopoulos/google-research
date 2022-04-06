@@ -31,6 +31,7 @@ def get_config():
   config.downsample_res = resolution
   config.resolution = [224, 224]
   config.timeline = 6
+  config.ref_index = 15
   config.mask_dir = './Datasets/TUM/testsetmasks'
   config.data_dir = './Datasets/TUM/testsetrgb'
   config.targets_dir = './Datasets/inpaint_new_sen12'
@@ -103,10 +104,11 @@ def get_config():
 
   config.sample = ConfigDict()
   config.sample.log_dir = 'samples_core'
+  config.sample.im_outputs = True
   config.sample.batch_size = 1
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 1031 #916 #498
+  config.sample.num_outputs = 498
   config.sample.skip_batches = 0
   config.sample.gen_file = 'gen0'
   config.sample.only_parallel = True

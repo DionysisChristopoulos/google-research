@@ -18,7 +18,7 @@ from ml_collections import ConfigDict
 from os import getenv
 
 resolution = int(getenv("DOWNSAMPLE_SIZE", 64))
-model_size = int(getenv("MODEL_SIZE", 128))
+model_size = int(getenv("MODEL_SIZE", 512))
 
 def get_config():
   """Experiment configuration."""
@@ -31,9 +31,10 @@ def get_config():
   config.resolution = [256, 256]
   config.random_channel = True
   config.timeline = 6
+  config.ref_index = 55 # TEST: 30
   config.mask_dir = './Datasets/Timeseries_cropped_512/masks_final_testset'
   config.data_dir = './Datasets/Timeseries_cropped_512/videos_final_testset'
-  config.targets_dir = './Datasets/inpaint_new_sr'
+  config.targets_dir = './Datasets/inpaint_out_sr'
   config.mask_availability = True
 
   # Training.
@@ -42,7 +43,7 @@ def get_config():
   config.save_checkpoint_secs = 900
   config.num_epochs = -1
   config.polyak_decay = 0.999
-  config.eval_num_examples = 20000
+  config.eval_num_examples = 100
   config.eval_batch_size = 1
   config.eval_checkpoint_wait_secs = -1
 
@@ -61,13 +62,14 @@ def get_config():
   config.model.name = 'spatial_upsampler'
 
   config.sample = ConfigDict()
-  config.sample.gen_data_dir = './Datasets/Checkpoints/makis_3_ckpt_dir_64/samples'
-  config.sample.log_dir = 'samples_sup'
-  config.sample.batch_size = 1
+  config.sample.gen_data_dir = './Datasets/Checkpoints/colorizer_128_conv_evalnew/samples_core_parallel'
+  config.sample.log_dir = 'samples_sup_ref_test'
+  config.sample.batch_size = 5
   config.sample.mode = 'argmax'
   config.sample.num_samples = 1
-  config.sample.num_outputs = 72
+  config.sample.num_outputs = 100
   config.sample.skip_batches = 0
   config.sample.gen_file = 'gen0_sup'
+  config.sample.im_outputs = False
 
   return config
